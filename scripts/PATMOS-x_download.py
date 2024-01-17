@@ -20,12 +20,30 @@ VARIABLES = ['cloud_phase', 'cloud_probability', 'cloud_fraction', 'cld_cwp_dcom
 BUCKET_PARENT = 'noaa-cdr-patmosx-radiances-and-clouds-pds/data'
 
 def apply_custom_filename(file: str | Path) -> str:
+    """Applies a custom filename pattern
+    
+    Args:
+        file: the path to the file
+    
+    Returns:
+        The filename with the custom pattern
+    """
     return Path(file).name.replace('.nc', '_v1.nc')
 
-def exists_remote(host: str, path: Path | str):
+def exists_remote(host: str, path: Path | str) -> bool:
     """Test if a file exists at path on a host accessible with SSH.
     
-    Adapted from https://stackoverflow.com/a/14392472
+    Adapted from https://stackoverflow.com/a/14392472.
+
+    Args:
+        host: the ssh alias, as configured in $HOME/.ssh/config
+        path: path in the host to the file
+    
+    Returns:
+        True if the file exists, False otherwise
+
+    Raises:
+        Exception: if the SSH connection failed
     """
     status = subprocess.call(
         ['ssh', host, 'test -f {}'.format(shlex.quote(str(path)))])
@@ -36,6 +54,13 @@ def exists_remote(host: str, path: Path | str):
     raise Exception('SSH failed')
 
 def process_file(file: str, destination_dir: Path, ssh: str=None) -> None:
+    """Function to encapsulate the processing of one file
+    
+    Args:
+        file: path to the file in the S3 bucket
+        destination_dir: where to write the file to disk
+        ssh: the ssh host, as configured in $HOME/.ssh/config
+    """
     # Create fs
     fs = fsspec.filesystem('s3', anon=True)
     with fs.open(f's3://{file}') as handle:
@@ -71,6 +96,13 @@ def process_file(file: str, destination_dir: Path, ssh: str=None) -> None:
 
 
 def run(files: list, n_proc: int, process_file_partial: functools.partial) -> None:
+    """Wrapper for executing the download and processing of the files in parallel.
+
+    Args:
+        files: list with the file paths in the S3 buckets to process
+        n_proc: how many processes to use
+        process_file_partial: process_file function with only `file` as parameter
+    """
     with multiprocessing.get_context('spawn').Pool(processes=n_proc) as pool:
         return list(
             tqdm.tqdm(
