@@ -169,17 +169,24 @@ if __name__ == "__main__":
     # Filter out files already present in destination
     n_all_files = len(files)
     new_files = []
+    failed_checks = []
     for f in files:
         fname = apply_custom_filename(Path(f).name)
         if args.ssh:
-            if not exists_remote(args.ssh, args.destination / fname):
-                new_files.append(f)
+            try:
+                if not exists_remote(args.ssh, args.destination / fname):
+                    new_files.append(f)
+            except:
+                failed_checks.append(f)
         else:
             if not (args.destination / fname).exists():
                 new_files.append(f)
     files = new_files
     n_new_files = len(files)
-    print(f"{n_new_files} of {n_all_files} not present in destination")
+    message = f"{n_new_files} of {n_all_files} not present in destination"
+    if len(failed_checks) > 0:
+        message = f"{message}, but {len(failed_checks)} files could not be checked"
+    print(message)
 
     process_file_partial = functools.partial(
         process_file, destination_dir=args.destination, ssh=args.ssh
