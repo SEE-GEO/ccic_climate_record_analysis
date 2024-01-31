@@ -1,3 +1,7 @@
+"""
+Compute pixel-wise monthly means separated by hour of day
+"""
+
 import argparse
 from pathlib import Path
 
