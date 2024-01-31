@@ -123,7 +123,7 @@ if __name__ == "__main__":
         "--start",
         required=True,
         type=lambda x: datetime.datetime.strptime(x, "%Y%m%d"),
-        help="from which date (YYYMMDD) download PATMOS-x data",
+        help="from which date (YYYYMMDD) download PATMOS-x data",
     )
     parser.add_argument(
         "--end",
