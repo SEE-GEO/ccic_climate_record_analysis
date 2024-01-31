@@ -129,7 +129,7 @@ if __name__ == "__main__":
         "--end",
         required=True,
         type=lambda x: datetime.datetime.strptime(x, "%Y%m%d"),
-        help="until which date (YYYMMDD) download PATMOS-x data",
+        help="until which date (YYYYMMDD) download PATMOS-x data",
     )
     parser.add_argument(
         "--destination", required=True, type=Path, help="where to place the files"
