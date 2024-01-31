@@ -134,4 +134,4 @@ if __name__ == "__main__":
 
     for month in tqdm.tqdm(sorted(list(files.keys())), dynamic_ncols=True):
         ds = process_month(files[month])
-        ds.to_netcdf(args.destination / f'PATMOS-x_v06-monthlymean_{month}.nc')
+        ds.to_netcdf(args.destination / f'PATMOS-x_v06-hourlymonthlymean_{month}.nc')
