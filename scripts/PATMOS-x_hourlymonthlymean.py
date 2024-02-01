@@ -141,7 +141,8 @@ if __name__ == "__main__":
     files = get_files_by_month(args.source)
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers) as executor:
-        futures_dict = {month: executor.submit(process_month, files[month], True) for month in sorted(list(files.keys()))}
-        for month in tqdm.tqdm(concurrent.futures.as_completed(futures_dict), dynamic_ncols=True, total=len(files.keys())):
-            ds = futures_dict[month].result()
+        futures_dict = {executor.submit(process_month, files[month], True): month for month in sorted(list(files.keys()))}
+        for future in tqdm.tqdm(concurrent.futures.as_completed(futures_dict), dynamic_ncols=True, total=len(files.keys())):
+            month = futures_dict[future]
+            ds = future.result()
             ds.to_netcdf(args.destination / f'PATMOS-x_v06-hourlymonthlymean_{month}.nc')
