@@ -99,6 +99,7 @@ def process_month(files: list[Path], show_progress: bool=True) -> xr.Dataset:
             where=ds['tiwp_count'].data > 0
         ).astype(np.float32)
     )
+    ds['tiwp'].attrs['units'] = 'g/m2'
 
     ds['tiwp_mixed'] = (
         ds.cloud_probability_sum.dims,
@@ -109,6 +110,7 @@ def process_month(files: list[Path], show_progress: bool=True) -> xr.Dataset:
             where=ds['tiwp_mixed_count'].data > 0
         ).astype(np.float32)
     )
+    ds['tiwp_mixed'].attrs['units'] = 'g/m2'
     
     ds = ds.drop_vars(['cloud_probability_sum', 'cloud_fraction_sum', 'tiwp_sum', 'tiwp_mixed_sum'])
 
