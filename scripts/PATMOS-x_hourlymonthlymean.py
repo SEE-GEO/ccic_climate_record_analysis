@@ -3,12 +3,15 @@ Compute pixel-wise monthly means separated by hour of day
 """
 
 import argparse
-import concurrent.futures
+from multiprocessing import Pool
 from pathlib import Path
 
 import numpy as np
 import tqdm
 import xarray as xr
+
+def get_month_from_filename(filepath: Path) -> str:
+    return filepath.name.split('_')[4][1:-2]
 
 def get_files_by_month(source: Path) -> dict:
     """Get files by month
@@ -22,7 +25,7 @@ def get_files_by_month(source: Path) -> dict:
     files = list(source.glob('*nc'))
     dictionary = dict()
     for f in files:
-        month = f.name.split('_')[4][1:-2]
+        month = get_month_from_filename(f)
         if month not in dictionary:
             dictionary[month] = []
         dictionary[month] = dictionary[month] + [f]
@@ -131,7 +134,7 @@ if __name__ == "__main__":
         help="folder to place the computed monthly means"
     )
     parser.add_argument(
-        "--workers",
+        "--processes",
         type=int,
         default=1,
         help="number of processes to use"
@@ -142,9 +145,10 @@ if __name__ == "__main__":
     # Get files
     files = get_files_by_month(args.source)
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers) as executor:
-        futures_dict = {executor.submit(process_month, files[month], True): month for month in sorted(list(files.keys()))}
-        for future in tqdm.tqdm(concurrent.futures.as_completed(futures_dict), dynamic_ncols=True, total=len(files.keys())):
-            month = futures_dict[future]
-            ds = future.result()
-            ds.to_netcdf(args.destination / f'PATMOS-x_v06-hourlymonthlymean_{month}.nc')
+    def process_month_aux(files: list[Path]) -> None:
+        ds = process_month(files)
+        month = get_month_from_filename(files[0])
+        ds.to_netcdf(args.destination / f'PATMOS-x_v06-hourlymonthlymean_{month}.nc')
+
+    with Pool(processes=args.processes) as pool:
+        list(tqdm.tqdm(pool.imap(process_month_aux, files.values()), dynamic_ncols=True, total=len(files)))
