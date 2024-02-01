@@ -26,36 +26,36 @@ def get_date_from_filename(p: Path) -> datetime.date:
         '%Y%m'
     ).date()
 
-def monthly_means(a: xr.DataArray) -> xr.DataArray:
-    """Compute the monthly mean by averaging the hourly monthly means
+def monthly_sums(ds: xr.Dataset, var: str) -> tuple[xr.DataArray, xr.DataArray]:
+    """Compute the monthly sums by summing the values along the hours of the day
     
     Args:
-        a: the xarray.DataArray for which to compute the average
+        ds: the xarray.Dataset containing the variables `var` and `var_count` 
+        var: variable for which to compute sums
     
     Returns:
-        An xarray.DataArray with the monthly mean
+        An xarray.DataArray with the sum along the hours of day and another
+        xarray.DataArray with the sum of values used in the sum
     """
 
-    numerator = np.squeeze(
+    a_var = ds[var]
+    a_var_count = ds[f'{var}_count']
+
+    a_var_sum = np.squeeze(
         np.nansum(
-            a.data,
-            axis=a.dims.index('hour_of_day')
+            (a_var * a_var_count),
+            axis=a_var.dims.index('hour_of_day')
         )
     )
 
-    denominator = np.squeeze(
+    a_var_count_sum = np.squeeze(
         np.nansum(
-            np.isfinite(a.data),
-            axis=a.dims.index('hour_of_day')
+            a_var_count,
+            axis=a_var_count.dims.index('hour_of_day')
         )
     )
 
-    return np.divide(
-        numerator,
-        denominator,
-        out=np.full_like(numerator, np.nan),
-        where=(denominator>0)
-    ).astype(np.float32)
+    return a_var_sum, a_var_count_sum
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -115,7 +115,10 @@ if __name__ == "__main__":
     # Process the first file manually to create arrays
     ds = xr.open_dataset(mm_files[0])
     time = [ds.time.data[0].astype('datetime64[M]').astype('datetime64[ns]')]
-    data = {v: monthly_means(ds[v])[None, ...] for v in args.variables}
+    data = dict()
+    for var in args.variables:
+        var_sum, var_count_sum = monthly_sums(ds, var)
+        data[var] = {'sum': var_sum[None, ...], 'count': var_count_sum[None, ...]}
 
     # Process the rest of the files, concatenating along the time dimension
     for f in tqdm.tqdm(mm_files[1:], dynamic_ncols=True):
@@ -123,13 +126,24 @@ if __name__ == "__main__":
         time.append(
             ds.time.data[0].astype('datetime64[M]').astype('datetime64[ns]')
         )
-        for v in args.variables:
-            data[v] = np.concatenate((data[v], monthly_means(ds[v])[None, ...]), axis=0)
+        for var in args.variables:
+            var_sum, var_count_sum = monthly_sums(ds, var)
+            data[var]['sum'] = np.concatenate(
+                (data[var]['sum'], var_sum[None, ...]),
+                axis=0
+            )
+            data[var]['count'] = np.concatenate(
+                (data[var]['count'], var_count_sum[None, ...]),
+                axis=0
+            )
     
     # Create an xarray dataset
     ds = xr.Dataset(
         data_vars={
-            v: (('time', 'latitude', 'longitude'), data[v])
+            v: (('time', 'latitude', 'longitude'), np.divide(data[v]['sum'], data[v]['count'], out=np.full_like(data[v]['sum'], np.nan), where=data[v]['count'] > 0))
+            for v in args.variables
+        } | {
+            f'{v}_count': (('time', 'latitude', 'longitude'), data[v]['count'])
             for v in args.variables
         },
         coords={
