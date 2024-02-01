@@ -3,6 +3,7 @@ Compute pixel-wise monthly means separated by hour of day
 """
 
 import argparse
+import concurrent.futures
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +28,7 @@ def get_files_by_month(source: Path) -> dict:
         dictionary[month] = dictionary[month] + [f]
     return dictionary
 
-def process_month(files: list[Path]) -> xr.Dataset:
+def process_month(files: list[Path], show_progress: bool=True) -> xr.Dataset:
     """
     Compute the monthly mean for one month
 
@@ -53,7 +54,8 @@ def process_month(files: list[Path]) -> xr.Dataset:
     ds['tiwp_mixed_sum'] = (('hour_of_day', 'time', 'latitude', 'longitude'), np.zeros(shape, dtype=float))
     ds.attrs = {'source': [str(f.name) for f in files]}
 
-    for f in tqdm.tqdm(files, dynamic_ncols=True, leave=False):
+    files_iterator = tqdm.tqdm(files, dynamic_ncols=True, leave=False) if show_progress else files
+    for f in files_iterator:
         ds_f = xr.open_dataset(f)
         hour_index = (ds_f.scan_line_time.data // 3600).astype(int)
         for i in range(24):
@@ -126,12 +128,20 @@ if __name__ == "__main__":
         type=Path,
         help="folder to place the computed monthly means"
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="number of processes to use"
+    )
 
     args = parser.parse_args()
 
     # Get files
     files = get_files_by_month(args.source)
 
-    for month in tqdm.tqdm(sorted(list(files.keys())), dynamic_ncols=True):
-        ds = process_month(files[month])
-        ds.to_netcdf(args.destination / f'PATMOS-x_v06-hourlymonthlymean_{month}.nc')
+    with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers) as executor:
+        futures_dict = {month: executor.submit(process_month, files[month], True) for month in sorted(list(files.keys()))}
+        for month in tqdm.tqdm(concurrent.futures.as_completed(futures_dict), dynamic_ncols=True, total=len(files.keys())):
+            ds = futures_dict[month].result()
+            ds.to_netcdf(args.destination / f'PATMOS-x_v06-hourlymonthlymean_{month}.nc')
