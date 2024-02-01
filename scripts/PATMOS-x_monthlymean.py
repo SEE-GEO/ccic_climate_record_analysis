@@ -138,7 +138,7 @@ if __name__ == "__main__":
             )
     
     # Create an xarray dataset
-    ds = xr.Dataset(
+    ds_monthlymeans = xr.Dataset(
         data_vars={
             v: (('time', 'latitude', 'longitude'), np.divide(data[v]['sum'], data[v]['count'], out=np.full_like(data[v]['sum'], np.nan), where=data[v]['count'] > 0))
             for v in args.variables
@@ -153,6 +153,11 @@ if __name__ == "__main__":
         }
     )
 
+    # Add units
+    for var in args.variables:
+        if 'units' in ds[var].attrs:
+            ds_monthlymeans[var].attrs['units'] = ds[var].attrs['units']
+
     # Write to disk
     fname = f"PATMOS-x_v06-monthlymean_{args.start.strftime('%Y%m')}-{args.end.strftime('%Y%m')}.nc"
-    ds.to_netcdf(args.destination / fname)
+    ds_monthlymeans.to_netcdf(args.destination / fname)
