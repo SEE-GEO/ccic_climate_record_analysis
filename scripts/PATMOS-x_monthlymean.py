@@ -1,10 +1,11 @@
 """
-Merge the files generated with PATMOS-x_hourlymonthlymean.py
-into a single netCDF
+Compute monthly means from the hourly monthly means
 """
 
 import argparse
 import datetime
+import functools
+from multiprocessing import Pool
 from pathlib import Path
 
 import numpy as np
@@ -57,6 +58,83 @@ def monthly_sums(ds: xr.Dataset, var: str) -> tuple[xr.DataArray, xr.DataArray]:
 
     return a_var_sum, a_var_count_sum
 
+def process_hmm_file(file_hmm: Path, variables: list[str],
+                     destination: Path) -> None:
+    """
+    Compute monthly means from a hourly monthly mean file, saving it to disk.
+
+    Args:
+        file_hmm: path to the hourly monthly mean file
+        variables: for which variables compute the means
+        destination: where to write the monthly mean file
+
+    Notes:
+        The number of data points in each pixel is taken into account.
+    """
+    ds_hourlymonthlymean = xr.open_dataset(file_hmm)
+    time = ds_hourlymonthlymean.time.data.astype(
+        'datetime64[M]'
+    ).astype('datetime64[ns]')
+    data = dict.fromkeys(variables)
+    for var in variables:
+        var_sum, var_count = monthly_sums(ds_hourlymonthlymean, var)
+        data[var] = {
+            'mean': np.divide(
+                var_sum,
+                var_count,
+                out=np.full_like(var_sum, np.nan),
+                where=(var_count > 0)
+            )[None, ...],
+            'count': var_count[None, ...]
+        }
+    ds_monthlymean = xr.Dataset(
+        data_vars={
+            v: (
+                ('time', 'latitude', 'longitude'),
+                data[var]['mean']
+            )
+            for v in variables
+        } | {
+            f"{v}_count": (
+                ('time', 'latitude', 'longitude'),
+                data[var]['count']
+            )
+            for v in variables
+        },
+        coords={
+            'time': (
+                'time',
+                time
+            ),
+            'latitude': (
+                'latitude',
+                ds_hourlymonthlymean.latitude.data
+                ),
+            'longitude': (
+                'longitude',
+                ds_hourlymonthlymean.longitude.data
+                )
+        }
+    )
+
+    # Add units
+    for var in variables:
+        if 'units' in ds_hourlymonthlymean[var].attrs:
+            units = ds_hourlymonthlymean[var].attrs['units']
+            ds_monthlymean[var].attrs['units'] = units
+
+    # Write to disk
+    month = get_date_from_filename(file_hmm).strftime('%Y%m')
+    file_mm = destination / f"PATMOS-x_v06-monthlymean_{month}.nc"
+    ds_monthlymean.to_netcdf(
+        file_mm,
+        # using this encoding the files can be about 3x smaller
+        encoding={
+            var: {'zlib': True, 'complevel': 9}
+            for var in ds_monthlymean
+        }
+    )
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -72,19 +150,7 @@ if __name__ == "__main__":
         '--destination',
         required=True,
         type=Path,
-        help="path to the directory where to save the compiled netCDF"
-    )
-    parser.add_argument(
-        '--start',
-        default=datetime.datetime(1982, 1, 1).date(),
-        type=lambda x: datetime.datetime.strptime(x, '%Y%m').date(),
-        help='for which year and month (YYYYMM) start computing the means'
-    )
-    parser.add_argument(
-        '--end',
-        default=datetime.datetime(2019, 12, 1).date(),
-        type=lambda x: datetime.datetime.strptime(x, '%Y%m').date(),
-        help='for which year and month (YYYYMM) end computing the means'
+        help="path to the directory where to save the new netCDFs"
     )
     parser.add_argument(
         '--variables',
@@ -92,72 +158,32 @@ if __name__ == "__main__":
         default=['cloud_probability', 'cloud_fraction', 'tiwp', 'tiwp_mixed'],
         help="variables for which compute the monthly means"
     )
+    parser.add_argument(
+        '--processes',
+        type=int,
+        default=16,
+        help="number of parallel processes to use"
+    )
 
     args = parser.parse_args()
 
     # Find files
-    mm_files = sorted(
+    hmm_files = sorted(
         list(args.source.glob('PATMOS-x_v06-hourlymonthlymean_*.nc'))
     )
 
-    # Filter according to start and end
-    mm_files = [
-        f
-        for f in mm_files
-        if args.start <= get_date_from_filename(f) <= args.end
-    ]
-
-    # Assert that there are as many files as expected to compute the means
-    expected_mm_files_count = 12 * (args.end.year - args.start.year) + \
-        args.end.month - args.start.month + 1
-    assert len(mm_files) == expected_mm_files_count
-
-    # Process the first file manually to create arrays
-    ds = xr.open_dataset(mm_files[0])
-    time = [ds.time.data[0].astype('datetime64[M]').astype('datetime64[ns]')]
-    data = dict()
-    for var in args.variables:
-        var_sum, var_count_sum = monthly_sums(ds, var)
-        data[var] = {'sum': var_sum[None, ...], 'count': var_count_sum[None, ...]}
-
-    # Process the rest of the files, concatenating along the time dimension
-    for f in tqdm.tqdm(mm_files[1:], dynamic_ncols=True):
-        ds = xr.open_dataset(f)
-        time.append(
-            ds.time.data[0].astype('datetime64[M]').astype('datetime64[ns]')
-        )
-        for var in args.variables:
-            var_sum, var_count_sum = monthly_sums(ds, var)
-            data[var]['sum'] = np.concatenate(
-                (data[var]['sum'], var_sum[None, ...]),
-                axis=0
-            )
-            data[var]['count'] = np.concatenate(
-                (data[var]['count'], var_count_sum[None, ...]),
-                axis=0
-            )
-    
-    # Create an xarray dataset
-    ds_monthlymeans = xr.Dataset(
-        data_vars={
-            v: (('time', 'latitude', 'longitude'), np.divide(data[v]['sum'], data[v]['count'], out=np.full_like(data[v]['sum'], np.nan), where=data[v]['count'] > 0))
-            for v in args.variables
-        } | {
-            f'{v}_count': (('time', 'latitude', 'longitude'), data[v]['count'])
-            for v in args.variables
-        },
-        coords={
-            'time': ('time', time),
-            'latitude': ('latitude', ds.latitude.data),
-            'longitude': ('longitude', ds.longitude.data)
-        }
+    # To make it work with tqdm and multiprocessing.Pool
+    process_hmm_file_partial = functools.partial(
+        process_hmm_file,
+        variables=args.variables,
+        destination=args.destination
     )
 
-    # Add units
-    for var in args.variables:
-        if 'units' in ds[var].attrs:
-            ds_monthlymeans[var].attrs['units'] = ds[var].attrs['units']
-
-    # Write to disk
-    fname = f"PATMOS-x_v06-monthlymean_{args.start.strftime('%Y%m')}-{args.end.strftime('%Y%m')}.nc"
-    ds_monthlymeans.to_netcdf(args.destination / fname)
+    with Pool(args.processes) as pool:
+        list(
+            tqdm.tqdm(
+                pool.imap(process_hmm_file_partial, hmm_files),
+                dynamic_ncols=True,
+                total=len(hmm_files)
+            )
+        )
