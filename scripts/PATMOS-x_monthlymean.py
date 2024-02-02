@@ -76,13 +76,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '--start',
-        default=datetime.datetime(1982, 1, 1),
+        default=datetime.datetime(1982, 1, 1).date(),
         type=lambda x: datetime.datetime.strptime(x, '%Y%m').date(),
         help='for which year and month (YYYYMM) start computing the means'
     )
     parser.add_argument(
         '--end',
-        default=datetime.datetime(2019, 12, 1),
+        default=datetime.datetime(2019, 12, 1).date(),
         type=lambda x: datetime.datetime.strptime(x, '%Y%m').date(),
         help='for which year and month (YYYYMM) end computing the means'
     )
