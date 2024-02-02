@@ -148,7 +148,12 @@ if __name__ == "__main__":
     def process_month_aux(files: list[Path]) -> None:
         ds = process_month(files)
         month = get_month_from_filename(files[0])
-        ds.to_netcdf(args.destination / f'PATMOS-x_v06-hourlymonthlymean_{month}.nc')
+        ds.to_netcdf(
+            args.destination / f'PATMOS-x_v06-hourlymonthlymean_{month}.nc',
+            # apply compression to save enormous disk space at little cost,
+            # see issue #12
+            encoding={var: {'zlib': True, 'complevel': 9} for var in ds}
+        )
 
     with Pool(processes=args.processes) as pool:
         list(tqdm.tqdm(pool.imap(process_month_aux, files.values()), dynamic_ncols=True, total=len(files)))
