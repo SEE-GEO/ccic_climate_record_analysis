@@ -87,7 +87,11 @@ with ProgressBar():
 # Write to disk
 fname = f"PATMOS-x_v06-monthlymean_{args.start.strftime('%Y%m')}-{args.end.strftime('%Y%m')}.nc"
 fpath = args.destination / fname
-write_job = ds.to_netcdf(fpath, compute=False)
+delayed_job = ds.to_netcdf(
+    fpath,
+    encoding={var: {'zlib': True, 'complevel': 9} for var in ds},
+    compute=False
+)
 with ProgressBar():
     print(f"Saving {fpath}")
-    write_job.compute()
+    delayed_job.compute()
