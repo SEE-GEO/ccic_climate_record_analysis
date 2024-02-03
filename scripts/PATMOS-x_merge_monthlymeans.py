@@ -31,7 +31,7 @@ parser.add_argument(
     type=Path,
     help=(
         "path to the location of the netCDFs "
-        "generated with PATMOS-x_hourlymonthlymean.py"
+        "generated with PATMOS-x_monthlymean.py"
     )
 )
 parser.add_argument(
