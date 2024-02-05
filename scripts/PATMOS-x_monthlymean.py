@@ -44,6 +44,8 @@ def process_hmm_file(file_hmm: Path, variables: list[str],
     data = dict.fromkeys(variables)
     for var in variables:
         data[var] = {
+            # Weighted mean by number of profiles in each hour, i.e.
+            # revert the aggregation by hour of day
             'mean': ds_hourlymonthlymean[var].weighted(
                 ds_hourlymonthlymean[f'{var}_count']).mean(
                     dim='hour_of_day', skipna=True
