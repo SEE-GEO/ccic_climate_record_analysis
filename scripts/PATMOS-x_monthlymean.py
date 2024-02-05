@@ -27,37 +27,6 @@ def get_date_from_filename(p: Path) -> datetime.date:
         '%Y%m'
     ).date()
 
-def monthly_sums(ds: xr.Dataset, var: str) -> tuple[xr.DataArray, xr.DataArray]:
-    """Compute the monthly sums by summing the values along the hours of the day
-    
-    Args:
-        ds: the xarray.Dataset containing the variables `var` and `var_count` 
-        var: variable for which to compute sums
-    
-    Returns:
-        An xarray.DataArray with the sum along the hours of day and another
-        xarray.DataArray with the sum of values used in the sum
-    """
-
-    a_var = ds[var]
-    a_var_count = ds[f'{var}_count']
-
-    a_var_sum = np.squeeze(
-        np.nansum(
-            (a_var * a_var_count),
-            axis=a_var.dims.index('hour_of_day')
-        )
-    )
-
-    a_var_count_sum = np.squeeze(
-        np.nansum(
-            a_var_count,
-            axis=a_var_count.dims.index('hour_of_day')
-        )
-    )
-
-    return a_var_sum, a_var_count_sum
-
 def process_hmm_file(file_hmm: Path, variables: list[str],
                      destination: Path) -> None:
     """
@@ -72,39 +41,32 @@ def process_hmm_file(file_hmm: Path, variables: list[str],
         The number of data points in each pixel is taken into account.
     """
     ds_hourlymonthlymean = xr.open_dataset(file_hmm)
-    time = ds_hourlymonthlymean.time.data.astype(
-        'datetime64[M]'
-    ).astype('datetime64[ns]')
     data = dict.fromkeys(variables)
     for var in variables:
-        var_sum, var_count = monthly_sums(ds_hourlymonthlymean, var)
         data[var] = {
-            'mean': np.divide(
-                var_sum,
-                var_count,
-                out=np.full_like(var_sum, np.nan),
-                where=(var_count > 0)
-            )[None, ...],
-            'count': var_count[None, ...]
+            'mean': ds_hourlymonthlymean[var].weighted(
+                ds_hourlymonthlymean[f'{var}_count']).mean(
+                    dim='hour_of_day', skipna=True
+                ),
+            'count': ds_hourlymonthlymean[f'{var}_count'].sum(
+                dim='hour_of_day', skipna=True
+            )
         }
+    dims = ('time', 'latitude', 'longitude')
     ds_monthlymean = xr.Dataset(
         data_vars={
-            v: (
-                ('time', 'latitude', 'longitude'),
-                data[var]['mean']
-            )
-            for v in variables
+            var: (dims, data[var]['mean'].data)
+            for var in variables
         } | {
-            f"{v}_count": (
-                ('time', 'latitude', 'longitude'),
-                data[var]['count']
-            )
-            for v in variables
+            f"{var}_count": (dims, data[var]['count'].data)
+            for var in variables
         },
         coords={
             'time': (
                 'time',
-                time
+                ds_hourlymonthlymean.time.data.astype(
+                    'datetime64[M]'
+                    ).astype('datetime64[ns]')
             ),
             'latitude': (
                 'latitude',
