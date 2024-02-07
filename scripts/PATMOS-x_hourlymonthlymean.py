@@ -53,8 +53,6 @@ def process_month(files: list[Path], show_progress: bool=True) -> xr.Dataset:
     ds['cloud_fraction_sum'] = (('hour_of_day', 'time', 'latitude', 'longitude'), np.zeros(shape, dtype=float))
     ds['tiwp_count'] = (('hour_of_day', 'time', 'latitude', 'longitude'), np.zeros(shape, dtype=int))
     ds['tiwp_sum'] = (('hour_of_day', 'time', 'latitude', 'longitude'), np.zeros(shape, dtype=float))
-    ds['tiwp_mixed_count'] = (('hour_of_day', 'time', 'latitude', 'longitude'), np.zeros(shape, dtype=int))
-    ds['tiwp_mixed_sum'] = (('hour_of_day', 'time', 'latitude', 'longitude'), np.zeros(shape, dtype=float))
     ds.attrs = {'source': [str(f.name) for f in files]}
 
     files_iterator = tqdm.tqdm(files, dynamic_ncols=True, leave=False) if show_progress else files
@@ -69,9 +67,6 @@ def process_month(files: list[Path], show_progress: bool=True) -> xr.Dataset:
             tiwp = np.where(ds_f['cloud_phase'] == 4, ds_f['cld_cwp_dcomp'], np.nan)
             ds['tiwp_sum'][i].data[hour_index == i] += np.where(np.isfinite(tiwp.data), tiwp.data, 0)[hour_index == i]
             ds['tiwp_count'][i].data[hour_index == i] += np.where(np.isfinite(tiwp.data), 1, 0)[hour_index == i]
-            tiwp_mixed = np.where(np.isin(ds_f['cloud_phase'], [3, 4]), ds_f['cld_cwp_dcomp'], np.nan)
-            ds['tiwp_mixed_sum'][i].data[hour_index == i] += np.where(np.isfinite(tiwp_mixed.data), tiwp_mixed.data, 0)[hour_index == i]
-            ds['tiwp_mixed_count'][i].data[hour_index == i] += np.where(np.isfinite(tiwp_mixed.data), 1, 0)[hour_index == i]
 
     ds['cloud_probability'] = (
         ds.cloud_probability_sum.dims,
@@ -103,19 +98,8 @@ def process_month(files: list[Path], show_progress: bool=True) -> xr.Dataset:
         ).astype(np.float32)
     )
     ds['tiwp'].attrs['units'] = 'g/m2'
-
-    ds['tiwp_mixed'] = (
-        ds.cloud_probability_sum.dims,
-        np.divide(
-            ds['tiwp_mixed_sum'].data,
-            ds['tiwp_mixed_count'].data,
-            out=np.full_like(ds['tiwp_mixed_sum'].data, np.nan),
-            where=ds['tiwp_mixed_count'].data > 0
-        ).astype(np.float32)
-    )
-    ds['tiwp_mixed'].attrs['units'] = 'g/m2'
     
-    ds = ds.drop_vars(['cloud_probability_sum', 'cloud_fraction_sum', 'tiwp_sum', 'tiwp_mixed_sum'])
+    ds = ds.drop_vars(['cloud_probability_sum', 'cloud_fraction_sum', 'tiwp_sum'])
 
     return ds
 

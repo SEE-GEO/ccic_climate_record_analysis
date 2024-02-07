@@ -119,7 +119,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--variables',
         nargs='+',
-        default=['cloud_probability', 'cloud_fraction', 'tiwp', 'tiwp_mixed'],
+        default=['cloud_probability', 'cloud_fraction', 'tiwp'],
         help="variables for which compute the monthly means"
     )
     parser.add_argument(
