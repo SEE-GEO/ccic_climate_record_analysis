@@ -12,7 +12,13 @@ dependencies:
   - jupyterlab
   - certifi
   - pip
-  - pyhdf
+  - fsspec
+  - s3fs
+  - dask
+  - netCDF4
+  - h5netcdf
+  - black
+  - tqdm
   - pip:
     - ccic
 
