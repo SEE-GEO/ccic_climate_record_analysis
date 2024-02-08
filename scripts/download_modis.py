@@ -20,28 +20,14 @@ parser.add_argument("token", help="Authentication token for data download")
 args = parser.parse_args()
 
 
-# def download_data(bash_script_path, source_url, destination_path, token):
-#    command = f"bash {bash_script_path} --source {source_url} --destination {destination_path} --token {token}"
-#    # Call the Bash script
-#    subprocess.run(command, shell=True)
-
-
 def download_data(bash_script_path, source_url, destination_path, token):
     command = f"bash {bash_script_path} --source {source_url} --destination {destination_path} --token {token}"
     result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, text=True)
-    downloaded_file_name = result.stdout.strip()  # Assuming the file name is the output
-    print(downloaded_file_name)
-    # downloaded_file_name = 'modis_data/MOD08_D3.A2015001.061.2017318224316.hdf'
+    downloaded_file_name = result.stdout.strip()  # assuming the file name is the output
     return downloaded_file_name
 
 
 def extract_data(date, destination_path, downloaded_file_name, dataset):
-    # Construct the file path
-    # downloaded_file_name = (
-    #    f"MOD08_D3.A{date.strftime('%Y%j')}.061.2017318224316.hdf"  # Modify as needed
-    # )
-    # file_path = os.path.join(destination_path, downloaded_file_name)
-    # with nc.Dataset(nc_filename, 'a') as dataset:
     try:
         daily_data = SD(downloaded_file_name, SDC.READ)
 
@@ -100,12 +86,11 @@ def extract_data(date, destination_path, downloaded_file_name, dataset):
         print(f"Error processing {downloaded_file_name}: {e}")
 
 
-# Example usage
 start_date = datetime(year, 1, 1)  # start from Jan 1.
 bash_script_path = "./download_modis_daily.sh"
 destination_path = "./data_tmp/"
 
-# Initialize NetCDF file
+# initialize NetCDF file
 nc_filename = f"ccic_modis_data_{year}.nc"
 dataset = nc.Dataset(nc_filename, "w", format="NETCDF4")
 
@@ -157,24 +142,24 @@ cloud_fraction_day_counts = dataset.createVariable(
     "Cloud_Fraction_Day_Pixel_Counts", "i4", ("date", "lat", "lon")
 )
 
+
 current_date = start_date
 for i in range(n_days):
     folder_name = current_date.strftime(
         "%j"
-    )  # Day of the year as a folder name (e.g., '001')
+    )  # day of the year as a folder name (e.g., '001')
     source_url = f"https://ladsweb.modaps.eosdis.nasa.gov/archive/allData/61/MYD08_D3/{year}/{folder_name}"
 
     downloaded_file_name = download_data(
         bash_script_path, source_url, destination_path, args.token
     )
-    # downloaded_file_name = None
     extract_data(current_date, destination_path, downloaded_file_name, dataset)
     try:
         os.remove(downloaded_file_name)
         print(f"Successfully deleted {downloaded_file_name}")
     except OSError as e:
         print(f"Error deleting {downloaded_file_name}: {e}")
-    # Move to the next day
+    # move to the next day
     current_date += timedelta(days=1)
 
 dataset.close()
