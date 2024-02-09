@@ -4,7 +4,6 @@ import numpy as np
 import datetime as datetime
 import pandas as pd
 from scipy.interpolate import griddata
-from multiprocessing import Pool
 
 mask_filepath = "/scratch/ccic_record/data/mask_24.nc"
 
@@ -199,118 +198,65 @@ def process_monthly_means(directory_path, mask=False):
 
     return all_results_df
 
-
-def interpolate_and_mask(args):
-    points_original, data, points_target, mask_array, lon_grid_target_shape = args
-    data_interpolated = griddata(
-        points_original,
-        data.flatten(),
-        points_target,
-        method="nearest",
-        fill_value=np.nan,
-    ).reshape(lon_grid_target_shape)
-
-    data_masked = np.where(mask_array, data_interpolated, np.nan)
-
-    return np.ma.masked_invalid(data_masked)
-
-
-def mask_data(data, lat_original, lon_original):
-
-    mask_ds = xr.open_dataset(mask_filepath)
+'''
+def interpolate_mask_to_data_coordinates(mask_ds, lat_original, lon_original):
+    # Coordinates from the mask dataset
+    lon_mask = mask_ds.longitude.values
+    lat_mask = mask_ds.latitude.values
     mask_array = mask_ds.mask.values
 
+    # Creating a grid of points for the mask
+    lon_grid_mask, lat_grid_mask = np.meshgrid(lon_mask, lat_mask)
+    points_mask = np.array([lon_grid_mask.flatten(), lat_grid_mask.flatten()]).T
+
+    # Creating a grid of points for the original data
     lon_grid_original, lat_grid_original = np.meshgrid(lon_original, lat_original)
-    points_original = np.array(
-        [lon_grid_original.flatten(), lat_grid_original.flatten()]
-    ).T
+    points_original = np.array([lon_grid_original.flatten(), lat_grid_original.flatten()]).T
 
-    lon_target = mask_ds.longitude.values
-    lat_target = mask_ds.latitude.values[::-1]  # reverse to match modis l3
-    lon_grid_target, lat_grid_target = np.meshgrid(lon_target, lat_target)
-    points_target = np.array([lon_grid_target.flatten(), lat_grid_target.flatten()]).T
-    lon_grid_target_shape = lon_grid_target.shape
+    # Interpolate the mask onto the original data's grid
+    mask_interpolated = griddata(
+        points_mask,
+        mask_array.flatten(),
+        points_original,
+        method="nearest",  # or consider "linear" for smoother mask edges
+        fill_value=0  # Assuming 0 is the value for masked/not applicable areas
+    ).reshape(lon_grid_original.shape)
 
-    with Pool() as pool:
-        args = [
-            (points_original, data[i], points_target, mask_array, lon_grid_target_shape)
-            for i in range(data.shape[0])
-        ]
-        print(points_original.shape)
-        print(data[0].shape)
-        data_new = pool.map(interpolate_and_mask, args)
+    # Convert the interpolated mask to a boolean array (if necessary)
+    mask_interpolated = mask_interpolated > 0.5  # Adjust threshold as necessary
 
-    return np.array(data_new), lon_target, lat_target
+    return mask_interpolated
+'''
 
-
-def create_masked_dataset(year):
-    """
-    Interpolate modis data onto gridsat lat/lons and then mask.
-    Ran as a pre-processing step to create the '_masked' files.
-    """
-
-    nc_filename_original = f"/scratch/ccic_record/data/modis/ccic_modis_data_{year}.nc"
-    nc_filename_masked = (
-        f"/scratch/ccic_record/data/modis/ccic_modis_data_{year}_masked.nc"
+def interpolate_mask(mask_ds, original_ds):
+    # Interpolate the mask dataset onto the original dataset's coordinates
+    # Assuming 'latitude' and 'longitude' are the coordinate names in the mask dataset
+    # and 'lat' and 'lon' for the original dataset
+    interpolated_mask = mask_ds.astype(int).interp(
+        lat=original_ds.lat, 
+        lon=original_ds.lon,
+        method='nearest'  # Use 'nearest' for a mask; alternatives include 'linear', 'cubic'
     )
+    return interpolated_mask
 
-    # Load original dataset
-    original_ds = xr.open_dataset(nc_filename_original)
-    dataset = nc.Dataset(nc_filename_masked, "w", format="NETCDF4")
+'''
+def mask_data_with_interpolated_mask(data, mask_interpolated):
+    # Apply the interpolated mask directly to the data
+    data_masked = np.where(mask_interpolated, data, np.nan)
+    return data_masked
+'''
 
-    lat_original, lon_original = original_ds.lat.values, original_ds.lon.values
+def apply_mask_to_dataset(original_ds, mask):
+    # Convert the interpolated mask to a boolean array if needed
+    # Assuming mask values of 1 indicate data to keep, and 0 to mask
+    #mask_boolean = interpolated_mask.mask > 0.5  # Adjust this based on your mask data
+    mask = mask.mask == 1
+    # Apply the mask to each variable in the dataset
+    for var in original_ds.data_vars:
+        original_ds[var] = original_ds[var].where(mask == True)
+    
+    return original_ds
 
-    mask_ds = xr.open_dataset(mask_filepath)
-
-    dataset.createDimension("date_idx", None)
-    date_idxs = dataset.createVariable("date_idx", "i4", ("date_idx",))
-
-    dataset.createDimension("date", None)
-    dates = dataset.createVariable("date", "i8", ("date",))
-    dates[:] = original_ds.date.values
-    dates.units = "Unix time [s]"
-
-    dataset.createDimension("lat", len(mask_ds.latitude.values[::-1]))
-    lats = dataset.createVariable("lat", "f4", ("lat",))
-    lats[:] = mask_ds.latitude.values[::-1]  # reverse to match modis L3
-    dataset.createDimension("lon", len(mask_ds.longitude.values[::-1]))
-    lons = dataset.createVariable("lon", "f4", ("lon",))
-    lons[:] = mask_ds.longitude.values
-
-    cloud_water_path_ice_mean = dataset.createVariable(
-        "Cloud_Water_Path_Ice_Mean", "i4", ("date", "lat", "lon")
-    )
-    cloud_fraction_ice = dataset.createVariable(
-        "Cloud_Retrieval_Fraction_Ice", "i4", ("date", "lat", "lon")
-    )
-    cloud_fraction_ice_counts = dataset.createVariable(
-        "Cloud_Retrieval_Fraction_Ice_Pixel_Counts", "i4", ("date", "lat", "lon")
-    )
-    cloud_fraction = dataset.createVariable(
-        "Cloud_Fraction_Mean", "i4", ("date", "lat", "lon")
-    )
-    cloud_fraction_counts = dataset.createVariable(
-        "Cloud_Fraction_Pixel_Counts", "i4", ("date", "lat", "lon")
-    )
-    cloud_fraction_day = dataset.createVariable(
-        "Cloud_Fraction_Day_Mean", "i4", ("date", "lat", "lon")
-    )
-    cloud_fraction_day_counts = dataset.createVariable(
-        "Cloud_Fraction_Day_Pixel_Counts", "i4", ("date", "lat", "lon")
-    )
-
-    for var_name in original_ds.data_vars:
-        if var_name not in dataset.variables:
-            continue  # skip counts, not needed
-        original_data = original_ds[var_name].values
-        # mask and interpolation
-        print(var_name)
-        processed_data, _, _ = mask_data(original_data, lat_original, lon_original)
-        dataset[var_name][:, :, :] = processed_data
-
-    # Close the datasets
-    original_ds.close()
-    dataset.close()
 
 
 if __name__ == "__main__":
