@@ -3,16 +3,25 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
-  - matplotlib
-  - xarray
-  - cmocean
+  - black
   - ca-certificates
-  - openssl
-  - jupyterlab
+  - cartopy
   - certifi
+  - cmocean
+  - cdsapi
+  - dask
+  - fsspec
+  - h5netcdf
+  - ipywidgets
+  - jupyterlab
+  - matplotlib
+  - netCDF4
+  - openssl
   - pip
+  - python=3.10
+  - s3fs
+  - tqdm
+  - xarray
   - pyhdf
   - pip:
     - ccic
-
