@@ -13,9 +13,6 @@ def calculate_statistics(dataset):
     Manually calculate annual statistics for zonal mean plots, etc.
     This is not used, but it is useful for figuring out statistics and checking results.
     """
-
-    # dataset = xr.open_dataset(file_path)
-
     dates_unix = dataset["date"][:]
     dates_unix = np.where(
         dates_unix == -9223372036854775806, 0, dates_unix
@@ -198,65 +195,128 @@ def process_monthly_means(directory_path, mask=False):
 
     return all_results_df
 
-'''
-def interpolate_mask_to_data_coordinates(mask_ds, lat_original, lon_original):
-    # Coordinates from the mask dataset
-    lon_mask = mask_ds.longitude.values
-    lat_mask = mask_ds.latitude.values
-    mask_array = mask_ds.mask.values
 
-    # Creating a grid of points for the mask
-    lon_grid_mask, lat_grid_mask = np.meshgrid(lon_mask, lat_mask)
-    points_mask = np.array([lon_grid_mask.flatten(), lat_grid_mask.flatten()]).T
+def process_global_distributions(directory_path, mask):
+    """
+    Calculate global distributions of TIWP and CF over all years of modis data.
+    """
 
-    # Creating a grid of points for the original data
-    lon_grid_original, lat_grid_original = np.meshgrid(lon_original, lat_original)
-    points_original = np.array([lon_grid_original.flatten(), lat_grid_original.flatten()]).T
+    suffix_for_variable = "masked" if mask else "unmasked"
 
-    # Interpolate the mask onto the original data's grid
-    mask_interpolated = griddata(
-        points_mask,
-        mask_array.flatten(),
-        points_original,
-        method="nearest",  # or consider "linear" for smoother mask edges
-        fill_value=0  # Assuming 0 is the value for masked/not applicable areas
-    ).reshape(lon_grid_original.shape)
+    lat = np.arange(-89.5, 90.5, 1)
+    lon = np.arange(-179.5, 180.5, 1)
+    n_lats = 180
+    n_lons = 360
 
-    # Convert the interpolated mask to a boolean array (if necessary)
-    mask_interpolated = mask_interpolated > 0.5  # Adjust threshold as necessary
+    CF_global_distribution_unmasked_count = np.zeros((n_lats, n_lons))
+    TIWP_global_distribution_unmasked_count = np.zeros((n_lats, n_lons))
+    CF_global_distribution_masked_count = np.zeros((n_lats, n_lons))
+    TIWP_global_distribution_masked_count = np.zeros((n_lats, n_lons))
 
-    return mask_interpolated
-'''
+    ds = xr.Dataset(
+        {
+            "CF_global_distribution_unmasked": (
+                ("lat", "lon"),
+                np.zeros((n_lats, n_lons)),
+            ),
+            "TIWP_global_distribution_unmasked": (
+                ("lat", "lon"),
+                np.zeros((n_lats, n_lons)),
+            ),
+            "CF_global_distribution_masked": (
+                ("lat", "lon"),
+                np.zeros((n_lats, n_lons)),
+            ),
+            "TIWP_global_distribution_masked": (
+                ("lat", "lon"),
+                np.zeros((n_lats, n_lons)),
+            ),
+        },
+        coords={
+            "lat": lat,
+            "lon": lon,
+        },
+    )
+
+    mask = mask.mask == 1
+
+    for file in os.listdir(directory_path):
+        if file.endswith(".nc"):
+            file_path = os.path.join(directory_path, file)
+
+            for masked in [True, False]:
+                suffix_for_variable = "masked" if masked else "unmasked"
+                dataset = xr.open_dataset(file_path)
+                if masked:
+                    for var in dataset.data_vars:
+                        dataset[var] = dataset[var].where(mask == 1)
+
+                IWP = dataset.Cloud_Water_Path_Ice_Mean
+                IWP = IWP.where(IWP >= 0)
+
+                IWP_counts = dataset.Cloud_Retrieval_Fraction_Ice_Pixel_Counts
+                IWP_counts = IWP_counts.where(IWP_counts >= 0)
+
+                CF_ice = dataset.Cloud_Retrieval_Fraction_Ice * 0.0001
+                CF_ice = CF_ice.where(CF_ice >= 0)
+
+                CF = dataset.Cloud_Fraction_Mean * 0.0001
+                CF = CF.where(CF >= 0)
+                CF_counts = dataset.Cloud_Fraction_Pixel_Counts
+                CF_counts = CF_counts.where(CF_counts >= 0)
+
+                if masked:
+                    ds["CF_global_distribution_masked"] += np.nansum(
+                        CF * CF_counts, axis=0
+                    )
+                    CF_global_distribution_masked_count += np.nansum(CF_counts, axis=0)
+
+                    ds["TIWP_global_distribution_masked"] += np.nansum(
+                        IWP * CF_ice * IWP_counts, axis=0
+                    )
+                    TIWP_global_distribution_masked_count += np.nansum(
+                        IWP_counts, axis=0
+                    )
+                else:
+                    ds["CF_global_distribution_unmasked"] += np.nansum(
+                        CF * CF_counts, axis=0
+                    )
+                    CF_global_distribution_unmasked_count += np.nansum(
+                        CF_counts, axis=0
+                    )
+
+                    ds["TIWP_global_distribution_unmasked"] += np.nansum(
+                        IWP * CF_ice * IWP_counts, axis=0
+                    )
+                    TIWP_global_distribution_unmasked_count += np.nansum(
+                        IWP_counts, axis=0
+                    )
+                dataset.close()
+
+    ds["CF_global_distribution_unmasked"] /= CF_global_distribution_unmasked_count
+    ds["TIWP_global_distribution_unmasked"] /= TIWP_global_distribution_unmasked_count
+    ds["CF_global_distribution_masked"] /= CF_global_distribution_masked_count
+    ds["TIWP_global_distribution_masked"] /= TIWP_global_distribution_masked_count
+
+    return ds
+
 
 def interpolate_mask(mask_ds, original_ds):
-    # Interpolate the mask dataset onto the original dataset's coordinates
-    # Assuming 'latitude' and 'longitude' are the coordinate names in the mask dataset
-    # and 'lat' and 'lon' for the original dataset
+    """
+    Interpolate the mask dataset onto modis dataset coordinates
+    """
     interpolated_mask = mask_ds.astype(int).interp(
-        lat=original_ds.lat, 
-        lon=original_ds.lon,
-        method='nearest'  # Use 'nearest' for a mask; alternatives include 'linear', 'cubic'
+        lat=original_ds.lat, lon=original_ds.lon, method="nearest"
     )
     return interpolated_mask
 
-'''
-def mask_data_with_interpolated_mask(data, mask_interpolated):
-    # Apply the interpolated mask directly to the data
-    data_masked = np.where(mask_interpolated, data, np.nan)
-    return data_masked
-'''
 
 def apply_mask_to_dataset(original_ds, mask):
-    # Convert the interpolated mask to a boolean array if needed
-    # Assuming mask values of 1 indicate data to keep, and 0 to mask
-    #mask_boolean = interpolated_mask.mask > 0.5  # Adjust this based on your mask data
     mask = mask.mask == 1
-    # Apply the mask to each variable in the dataset
     for var in original_ds.data_vars:
         original_ds[var] = original_ds[var].where(mask == True)
-    
-    return original_ds
 
+    return original_ds
 
 
 if __name__ == "__main__":
@@ -267,3 +327,12 @@ if __name__ == "__main__":
     df_unmasked.set_index("date", inplace=True)
     ds = df_unmasked.to_xarray().sortby("date")
     ds.to_netcdf("modis_cf_tiwp_time_series.nc")
+
+    process_global_dist = False
+
+    if process_global_dist:
+        mask = xr.open_dataset("../mask_24_for_modis.nc")
+        modis_data_dir = "../../data/"
+
+        global_dist = process_global_distributions(modis_data_dir, mask)
+        global_dist.to_netcdf("global_distribution_cf_tiwp_modis.nc")
