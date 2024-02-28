@@ -64,7 +64,10 @@ def process_month(files: list[Path], show_progress: bool=True) -> xr.Dataset:
             ds['cloud_probability_count'][i].data[hour_index == i] += np.ones((hour_index == i).sum(), dtype=int)
             ds['cloud_fraction_sum'][i].data[hour_index == i] += ds_f['cloud_fraction'].data[hour_index == i]
             ds['cloud_fraction_count'][i].data[hour_index == i] += np.ones((hour_index == i).sum(), dtype=int)
-            tiwp = np.where(ds_f['cloud_phase'] == 4, ds_f['cld_cwp_dcomp'], np.nan)
+            # TIWP: The cloud_phase is either {0: clear, 1: water, 2: supercooled_water, 3: mixed, 4: ice, 5: unknown}
+            #       `unknown` includes NaNs
+            #       Consider TIWP 0 for all those cases where cloud_phase is not ice, and assign NaN to those `unknown`
+            tiwp = np.where(ds_f['cloud_phase'] == 4, ds_f['cld_cwp_dcomp'], 0) * np.where(ds_f['cloud_phase'] == 5, np.nan, 1)
             ds['tiwp_sum'][i].data[hour_index == i] += np.where(np.isfinite(tiwp.data), tiwp.data, 0)[hour_index == i]
             ds['tiwp_count'][i].data[hour_index == i] += np.where(np.isfinite(tiwp.data), 1, 0)[hour_index == i]
 
