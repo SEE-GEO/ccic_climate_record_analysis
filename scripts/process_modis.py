@@ -1,122 +1,33 @@
 import xarray as xr
-import netCDF4 as nc
 import numpy as np
 import datetime as datetime
 import pandas as pd
-from scipy.interpolate import griddata
-
-mask_filepath = "/scratch/ccic_record/data/mask_24.nc"
-
-
-def calculate_statistics(dataset):
-    """
-    Manually calculate annual statistics for zonal mean plots, etc.
-    This is not used, but it is useful for figuring out statistics and checking results.
-    """
-
-    # dataset = xr.open_dataset(file_path)
-
-    dates_unix = dataset["date"][:]
-    dates_unix = np.where(
-        dates_unix == -9223372036854775806, 0, dates_unix
-    )  # invalid data
-    dates = [
-        datetime.datetime.utcfromtimestamp(dates_unix[i]).strftime("%Y-%m-%d")
-        for i in range(len(dates_unix))
-    ]
-    latitude = dataset["lat"][:]
-    longitude = dataset["lon"][:]
-
-    IWP = dataset["Cloud_Water_Path_Ice_Mean"][:]
-    IWP = np.ma.masked_where((IWP == -9999) | (IWP == -2147483647), IWP)  # invalid data
-
-    IWP_counts = dataset["Cloud_Water_Path_Ice_Histogram_Counts"][:]
-    IWP_counts = np.sum(
-        np.ma.masked_where(
-            (IWP_counts == -9999) | (IWP_counts == -2147483647), IWP_counts
-        ),
-        axis=1,
-    )
-
-    CF_ice = dataset["Cloud_Retrieval_Fraction_Ice"][:]
-    CF_ice = np.ma.masked_where((CF_ice == -9999) | (CF_ice == -2147483647), CF_ice)
-    CF_ice = CF_ice.astype(float) * 0.0001
-
-    CF_ice_counts = dataset["Cloud_Retrieval_Fraction_Ice_Pixel_Counts"][:]
-    CF_ice_counts = np.ma.masked_where(
-        (CF_ice_counts == -9999) | (CF_ice_counts == -2147483647), CF_ice_counts
-    )
-
-    CF = dataset["Cloud_Fraction_Mean"][:]
-    CF = np.ma.masked_where((CF == -9999) | (CF == -2147483647), CF)
-    CF = CF.astype(float) * 0.0001
-
-    CF_counts = dataset["Cloud_Fraction_Pixel_Counts"][:]
-    CF_counts = np.ma.masked_where(
-        (CF_counts == -9999) | (CF_counts == -2147483647), CF_counts
-    )
-
-    CF_day = dataset["Cloud_Fraction_Day_Mean"][:]
-    CF_day = np.ma.masked_where((CF_day == -9999) | (CF_day == -2147483647), CF_day)
-    CF_day = CF_day.astype(float) * 0.0001
-
-    CF_day_counts = dataset["Cloud_Fraction_Day_Pixel_Counts"][:]
-    CF_day_counts = np.ma.masked_where(
-        (CF_day_counts == -9999) | (CF_day_counts == -2147483647), CF_day_counts
-    )
-
-    CF_global_distribution = np.sum(CF * CF_counts, axis=0) / np.sum(CF_counts, axis=0)
-    CF_day_global_distribution = np.sum(CF_day * CF_day_counts, axis=0) / np.sum(
-        CF_day_counts, axis=0
-    )
-
-    TIWP_global_distribution = np.sum(IWP * CF_ice * IWP_counts, axis=0) / np.sum(
-        IWP_counts, axis=0
-    )
-
-    TIWP_zonal_mean = np.zeros(180)
-    TIWP_zonal_count = np.zeros(180)
-    CF_zonal_mean = np.zeros(180)
-    CF_zonal_count = np.zeros(180)
-    for i in range(IWP.shape[0]):
-        TIWP_zonal_mean += np.sum(IWP[i] * CF_ice[i], axis=1)
-        TIWP_zonal_count += 1 * 360  # +1 for every day and 360 for longitudes
-        # equally weighted, so same division even if no data for one of the longitudes
-        CF_zonal_mean += np.sum(CF_day[i], axis=1)
-        CF_zonal_count += 1 * 360
-    TIWP_zonal_mean /= TIWP_zonal_count
-    CF_zonal_mean /= CF_zonal_count
-
-    # global means
-    factor = np.zeros((len(latitude), len(longitude)))
-    for i in range(len(longitude)):
-        factor[:, i] = np.cos(np.deg2rad(latitude))
-    TIWP_global_mean = np.mean(
-        np.sum(IWP * CF_ice * factor, axis=(1, 2)) / np.sum(factor)
-    )
-
-    statistics = {
-        "CF_global_distribution": CF_global_distribution,
-        "CF_day_global_distribution": CF_day_global_distribution,
-        "TIWP_global_distribution": TIWP_global_distribution,
-        "TIWP_zonal_mean": TIWP_zonal_mean,
-        "date": dates,
-        "CF_zonal_mean": CF_zonal_mean,
-        "TIWP_global_mean": calculate_global_mean(IWP * CF_ice, latitude, longitude),
-        "CF_global_mean": calculate_global_mean(CF, latitude, longitude),
-    }
-
-    return statistics
+import os
 
 
 def calculate_global_mean(data, dataset):
     """
     Calculate a global mean, weighted by grid area at a given latitude
-    Assumes data is 2D array, gridded on to the lats and lons provided as arguments.
+    Parameters:
+    - data (np.ndarray): 3D numpy array containing the data values to be averaged,
+    - dataset (xarray.Dataset): An xarray Dataset object that must contain the latitude coordinates.
+      These are used to calculate the weights for the area-weighted mean. The latitude coordinates
+      should be accessible via dataset.lat.
+
+    Returns:
+    - float: Global mean value
     """
+
     factor = np.cos(np.deg2rad(dataset.lat))
     factor.name = "factor"
+
+    # xarray method
     global_mean = data.weighted(factor).mean(("lon", "lat", "date"))
+
+    # manual method
+    #global_mean = np.nansum(data * factor, axis=(0, 1, 2)) / (
+    #    np.nansum(factor) * data.shape[0] * data.shape[2]
+    #)
     return global_mean
 
 
@@ -140,7 +51,7 @@ def calculate_monthly_means(dataset, variable, mask):
         if variable == "TIWP":
             IWP = group.Cloud_Water_Path_Ice_Mean
             CF_ice = group.Cloud_Retrieval_Fraction_Ice
-            data_filtered = IWP.where(IWP >= 0) * CF_ice.where(CF_ice >= 0) * 0.0001
+            data_filtered = IWP.where(IWP >= 0).fillna(0) * CF_ice.where(CF_ice >= 0) * 0.0001
         elif variable == "CF":
             CF = group.Cloud_Fraction_Mean
             data_filtered = CF.where(CF >= 0) * 0.0001
@@ -150,7 +61,7 @@ def calculate_monthly_means(dataset, variable, mask):
     return processed_results
 
 
-def process_monthly_means(directory_path, mask=False):
+def process_monthly_means(directory_path, mask):
     """
     Calculates monthly means for all data in a directory.
     Assumes this is annual modis data.
@@ -158,16 +69,28 @@ def process_monthly_means(directory_path, mask=False):
     """
     all_results = []
 
-    file_suffix = "_masked.nc" if mask else ".nc"
+    mask = mask.mask == 1
 
     for file in os.listdir(directory_path):
-        if file.endswith(file_suffix):
+        if file.endswith(".nc"):
             file_path = os.path.join(directory_path, file)
             if "_masked.nc" in file_path:
-                suffix_for_variable = "masked"
-            else:
-                suffix_for_variable = "unmasked"
+                continue
+            if "global" in file_path:
+                continue
+            if "time" in file_path:
+                continue
+            if "zonal" in file_path:
+                continue
+
+            print(file_path)
+
             dataset = xr.open_dataset(file_path)
+            dataset_masked = dataset.copy()
+
+            for var in dataset_masked.data_vars:
+                dataset_masked[var] = dataset_masked[var].where(mask == 1)
+
             latitude = dataset["lat"][:]
             longitude = dataset["lon"][:]
 
@@ -180,90 +103,335 @@ def process_monthly_means(directory_path, mask=False):
 
             cf_monthly_mean = calculate_monthly_means(dataset, "CF", mask=mask)
             tiwp_monthly_mean = calculate_monthly_means(dataset, "TIWP", mask=mask)
-
-            cf_variable_name = f"CF_global_mean_{suffix_for_variable}"
-            tiwp_variable_name = f"TIWP_global_mean_{suffix_for_variable}"
+            cf_monthly_mean_masked = calculate_monthly_means(
+                dataset_masked, "CF", mask=mask
+            )
+            tiwp_monthly_mean_masked = calculate_monthly_means(
+                dataset_masked, "TIWP", mask=mask
+            )
 
             for month in cf_monthly_mean.keys():
                 date = pd.to_datetime(f"{year}-{int(month):02d}-01")
                 all_results.append(
                     {
                         "date": date,
-                        tiwp_variable_name: tiwp_monthly_mean[month].values.item(),
-                        cf_variable_name: cf_monthly_mean[month].values.item(),
+                        "TIWP_global_mean_unmasked": tiwp_monthly_mean[
+                            month
+                        ],
+                        "CF_global_mean_unmasked": cf_monthly_mean[month],
+                        "TIWP_global_mean_masked": tiwp_monthly_mean_masked[
+                            month
+                        ],
+                        "CF_global_mean_masked": cf_monthly_mean_masked[
+                            month
+                        ],
                     }
                 )
+
+            dataset.close()
+            dataset_masked.close()
+
+    # something wrong with august 2021 modis data - huge amounts are missing for most of the month
+    for result in all_results:
+        if result["date"] == datetime.datetime(2020, 8, 1, 0, 0, 0):
+            result["TIWP_global_mean_unmasked"] = np.nan
+            result["CF_global_mean_unmasked"] = np.nan
+            result["TIWP_global_mean_masked"] = np.nan
+            result["CF_global_mean_masked"] = np.nan
 
     all_results_df = pd.DataFrame(all_results)
 
     return all_results_df
 
-'''
-def interpolate_mask_to_data_coordinates(mask_ds, lat_original, lon_original):
-    # Coordinates from the mask dataset
-    lon_mask = mask_ds.longitude.values
-    lat_mask = mask_ds.latitude.values
-    mask_array = mask_ds.mask.values
 
-    # Creating a grid of points for the mask
-    lon_grid_mask, lat_grid_mask = np.meshgrid(lon_mask, lat_mask)
-    points_mask = np.array([lon_grid_mask.flatten(), lat_grid_mask.flatten()]).T
+def process_global_distributions(directory_path, mask):
+    """
+    Calculate global distributions of TIWP and CF over all years of modis data.
 
-    # Creating a grid of points for the original data
-    lon_grid_original, lat_grid_original = np.meshgrid(lon_original, lat_original)
-    points_original = np.array([lon_grid_original.flatten(), lat_grid_original.flatten()]).T
+    Parameters:
+    - directory_path (str): Path to the directory containing the modis L3 netcdfs.
+    - mask (xarray.DataArray): Mask to apply when calculating the masked distributions.
 
-    # Interpolate the mask onto the original data's grid
-    mask_interpolated = griddata(
-        points_mask,
-        mask_array.flatten(),
-        points_original,
-        method="nearest",  # or consider "linear" for smoother mask edges
-        fill_value=0  # Assuming 0 is the value for masked/not applicable areas
-    ).reshape(lon_grid_original.shape)
+    Returns:
+    - xarray.Dataset: Global distributions of CF and TIWP, both masked and unmasked.
+    """
 
-    # Convert the interpolated mask to a boolean array (if necessary)
-    mask_interpolated = mask_interpolated > 0.5  # Adjust threshold as necessary
+    suffix_for_variable = "masked" if mask else "unmasked"
 
-    return mask_interpolated
-'''
+    lat = np.arange(-89.5, 90.5, 1)
+    lon = np.arange(-179.5, 180.5, 1)
+    n_lats = 180
+    n_lons = 360
+
+    CF_global_distribution_unmasked_count = np.zeros((n_lats, n_lons))
+    TIWP_global_distribution_unmasked_count = np.zeros((n_lats, n_lons))
+    CF_global_distribution_masked_count = np.zeros((n_lats, n_lons))
+    TIWP_global_distribution_masked_count = np.zeros((n_lats, n_lons))
+
+    ds = xr.Dataset(
+        {
+            "CF_global_distribution_unmasked": (
+                ("lat", "lon"),
+                np.zeros((n_lats, n_lons)),
+            ),
+            "TIWP_global_distribution_unmasked": (
+                ("lat", "lon"),
+                np.zeros((n_lats, n_lons)),
+            ),
+            "CF_global_distribution_masked": (
+                ("lat", "lon"),
+                np.zeros((n_lats, n_lons)),
+            ),
+            "TIWP_global_distribution_masked": (
+                ("lat", "lon"),
+                np.zeros((n_lats, n_lons)),
+            ),
+        },
+        coords={
+            "lat": lat,
+            "lon": lon,
+        },
+    )
+
+    mask = mask.mask == 1
+
+    for file in os.listdir(directory_path):
+        if file.endswith(".nc"):
+            file_path = os.path.join(directory_path, file)
+
+            if "_masked.nc" in file_path:
+                continue
+            if "global" in file_path:
+                continue
+            if "time" in file_path:
+                continue
+            if "zonal" in file_path:
+                continue
+
+            for masked in [True, False]:
+                suffix_for_variable = "masked" if masked else "unmasked"
+                dataset = xr.open_dataset(file_path)
+                if masked:
+                    for var in dataset.data_vars:
+                        dataset[var] = dataset[var].where(mask == 1)
+
+                # remove failed downloads (negative date)
+                dataset = dataset.where(dataset['date'] >= 0, drop=True)
+
+                IWP = dataset.Cloud_Water_Path_Ice_Mean
+                IWP = IWP.where(IWP >= 0)
+
+                IWP_counts = dataset.Cloud_Retrieval_Fraction_Ice_Pixel_Counts
+                IWP_counts = IWP_counts.where(IWP_counts >= 0)
+
+                CF_ice = dataset.Cloud_Retrieval_Fraction_Ice * 0.0001
+                CF_ice = CF_ice.where(CF_ice >= 0)
+
+                CF = dataset.Cloud_Fraction_Mean * 0.0001
+                CF = CF.where(CF >= 0)
+                CF_counts = dataset.Cloud_Fraction_Pixel_Counts
+                CF_counts = CF_counts.where(CF_counts >= 0)
+
+                if masked:
+                    ds["CF_global_distribution_masked"] += np.nansum(CF, axis=0)
+                    CF_global_distribution_masked_count += np.sum(~np.isnan(CF), axis=0)
+
+                    ds["TIWP_global_distribution_masked"] += np.nansum(
+                        IWP * CF_ice, axis=0
+                    )
+                    TIWP_global_distribution_masked_count += np.sum(
+                        ~np.isnan(CF_ice), axis=0
+                    )
+
+                else:
+                    ds["CF_global_distribution_unmasked"] += np.nansum(CF, axis=0)
+                    CF_global_distribution_unmasked_count += np.sum(
+                        ~np.isnan(CF), axis=0
+                    )
+
+                    ds["TIWP_global_distribution_unmasked"] += np.nansum(
+                        IWP * CF_ice, axis=0
+                    )
+                    TIWP_global_distribution_unmasked_count += np.sum(
+                        ~np.isnan(CF_ice), axis=0
+                    )
+
+                dataset.close()
+
+    ds["CF_global_distribution_unmasked"] /= CF_global_distribution_unmasked_count
+    ds["TIWP_global_distribution_unmasked"] /= TIWP_global_distribution_unmasked_count
+    ds["CF_global_distribution_masked"] /= CF_global_distribution_masked_count
+    ds["TIWP_global_distribution_masked"] /= TIWP_global_distribution_masked_count
+
+    return ds
+
+
+def process_zonal_means(directory_path, mask):
+    """
+    Calculate zonal means of TIWP and CF over all years of modis data.
+    """
+
+    suffix_for_variable = "masked" if mask else "unmasked"
+
+    lat = np.arange(-89.5, 90.5, 1)
+    n_lats = 180
+
+    CF_zonal_mean_unmasked_count = np.zeros((n_lats))
+    TIWP_zonal_mean_unmasked_count = np.zeros((n_lats))
+    CF_zonal_mean_masked_count = np.zeros((n_lats))
+    TIWP_zonal_mean_masked_count = np.zeros((n_lats))
+
+    ds = xr.Dataset(
+        {
+            "CF_zonal_mean_unmasked": (
+                ("lat"),
+                np.zeros((n_lats)),
+            ),
+            "TIWP_zonal_mean_unmasked": (
+                ("lat"),
+                np.zeros((n_lats)),
+            ),
+            "CF_zonal_mean_masked": (
+                ("lat"),
+                np.zeros((n_lats)),
+            ),
+            "TIWP_zonal_mean_masked": (
+                ("lat"),
+                np.zeros((n_lats)),
+            ),
+        },
+        coords={
+            "lat": lat,
+        },
+    )
+
+    mask = mask.mask == 1
+
+    TIWP_data_masked = []
+    CF_data_masked = []
+    TIWP_data_unmasked = []
+    CF_data_unmasked = []
+
+    for file in os.listdir(directory_path):
+        if file.endswith(".nc"):
+            file_path = os.path.join(directory_path, file)
+            print(file_path)
+            if "_masked.nc" in file_path:
+                continue
+            if "global" in file_path:
+                continue
+            if "time" in file_path:
+                continue
+            if "zonal" in file_path:
+                continue
+            for masked in [True, False]:
+                suffix_for_variable = "masked" if masked else "unmasked"
+                dataset = xr.open_dataset(file_path)
+                if masked:
+                    for var in dataset.data_vars:
+                        dataset[var] = dataset[var].where(mask == 1)
+
+                IWP = dataset.Cloud_Water_Path_Ice_Mean
+                IWP = IWP.where(IWP >= 0)
+
+                IWP_counts = dataset.Cloud_Retrieval_Fraction_Ice_Pixel_Counts
+                IWP_counts = IWP_counts.where(IWP_counts >= 0)
+
+                CF_ice = dataset.Cloud_Retrieval_Fraction_Ice * 0.0001
+                CF_ice = CF_ice.where(CF_ice >= 0)
+
+                CF = dataset.Cloud_Fraction_Mean * 0.0001
+                CF = CF.where(CF >= 0)
+                CF_counts = dataset.Cloud_Fraction_Pixel_Counts
+                CF_counts = CF_counts.where(CF_counts >= 0)
+
+                IWP = IWP.where(IWP >= 0).fillna(0)
+                TIWP = IWP * CF_ice
+
+
+                if masked:
+                    TIWP_data_masked.append(TIWP)
+                    CF_data_masked.append(CF)
+                else:
+                    TIWP_data_unmasked.append(TIWP)
+                    CF_data_unmasked.append(CF)
+
+                #if masked:
+                #    ds["CF_zonal_mean_masked"] += np.nansum(CF, axis=(0, 2))
+                #    CF_zonal_mean_masked_count += CF.shape[0] * 360
+                    # +shape[0] for each day, and 360 for longitudes
+
+                #    ds["TIWP_zonal_mean_masked"] += np.nansum(IWP * CF_ice, axis=(0, 2))
+                #    TIWP_zonal_mean_masked_count += IWP.shape[0] * 360
+                #else:
+                #    ds["CF_zonal_mean_unmasked"] += np.nansum(CF, axis=(0, 2))
+                #    CF_zonal_mean_unmasked_count += CF.shape[0] * 360
+
+                #    ds["TIWP_zonal_mean_unmasked"] += np.nansum(
+                #        IWP * CF_ice, axis=(0, 2)
+                #    )
+                #    TIWP_zonal_mean_unmasked_count += IWP.shape[0] * 360
+                dataset.close()
+
+    #ds["CF_zonal_mean_unmasked"] /= CF_zonal_mean_unmasked_count
+    #ds["TIWP_zonal_mean_unmasked"] /= TIWP_zonal_mean_unmasked_count
+    #ds["CF_zonal_mean_masked"] /= CF_zonal_mean_masked_count
+    #ds["TIWP_zonal_mean_masked"] /= TIWP_zonal_mean_masked_count
+
+    test = xr.concat(CF_data_unmasked, dim='dataset')
+    #print(test.mean(dim=['dataset', 'lon', 'date']))
+
+    CF_data_unmasked = xr.concat(CF_data_unmasked, dim='dataset')
+    #print(CF_data_unmasked.mean(dim=['dataset', 'lon', 'date']))
+    
+    ds["CF_zonal_mean_unmasked"] = CF_data_unmasked.mean(dim=['dataset', 'lon', 'date'])
+    print(ds["CF_zonal_mean_unmasked"])
+    
+    ds["TIWP_zonal_mean_unmasked"] = xr.concat(TIWP_data_unmasked, dim='dataset').mean(dim=['dataset', 'lon', 'date'])
+    ds["CF_zonal_mean_masked"] = xr.concat(CF_data_masked, dim='dataset').mean(dim=['dataset', 'lon', 'date'])
+    ds["TIWP_zonal_mean_masked"] = xr.concat(TIWP_data_masked, dim='dataset').mean(dim=['dataset', 'lon', 'date'])
+    print(ds["TIWP_zonal_mean_masked"])
+
+    return ds
+
 
 def interpolate_mask(mask_ds, original_ds):
-    # Interpolate the mask dataset onto the original dataset's coordinates
-    # Assuming 'latitude' and 'longitude' are the coordinate names in the mask dataset
-    # and 'lat' and 'lon' for the original dataset
+    """
+    Interpolate the mask dataset onto modis dataset coordinates
+    """
     interpolated_mask = mask_ds.astype(int).interp(
-        lat=original_ds.lat, 
-        lon=original_ds.lon,
-        method='nearest'  # Use 'nearest' for a mask; alternatives include 'linear', 'cubic'
+        lat=original_ds.lat, lon=original_ds.lon, method="nearest"
     )
     return interpolated_mask
 
-'''
-def mask_data_with_interpolated_mask(data, mask_interpolated):
-    # Apply the interpolated mask directly to the data
-    data_masked = np.where(mask_interpolated, data, np.nan)
-    return data_masked
-'''
 
 def apply_mask_to_dataset(original_ds, mask):
-    # Convert the interpolated mask to a boolean array if needed
-    # Assuming mask values of 1 indicate data to keep, and 0 to mask
-    #mask_boolean = interpolated_mask.mask > 0.5  # Adjust this based on your mask data
     mask = mask.mask == 1
-    # Apply the mask to each variable in the dataset
     for var in original_ds.data_vars:
         original_ds[var] = original_ds[var].where(mask == True)
-    
-    return original_ds
 
+    return original_ds
 
 
 if __name__ == "__main__":
 
-    directory_path = "/scratch/ccic_record/data/modis/"
+    modis_data_dir = "/scratch/ccic_record/data/modis/"
+    mask = xr.open_dataset("../mask_24_for_modis.nc")
 
-    df_unmasked = process_monthly_means(directory_path, mask=False)
-    df_unmasked.set_index("date", inplace=True)
-    ds = df_unmasked.to_xarray().sortby("date")
-    ds.to_netcdf("modis_cf_tiwp_time_series.nc")
+    process_global_dist = False
+    process_time_series = False
+    process_zonal_mean = True
+
+    if process_global_dist:
+        global_dist = process_global_distributions(modis_data_dir, mask)
+        global_dist.to_netcdf("global_distribution_cf_tiwp_modis.nc")
+
+    if process_time_series:
+        df_unmasked = process_monthly_means(modis_data_dir, mask)
+        df_unmasked.set_index("date", inplace=True)
+        ds = df_unmasked.to_xarray().sortby("date")
+        ds.to_netcdf("modis_cf_tiwp_time_series.nc")
+
+    if process_zonal_mean:
+        zonal_mean = process_zonal_means(modis_data_dir, mask)
+        zonal_mean.to_netcdf("zonal_mean_cf_tiwp_modis.nc")
