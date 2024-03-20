@@ -5,6 +5,7 @@ from the precomputed CCIC CPCIR monthly means record.
 The core code is based on
 ../notebooks/ccic_gridsat_time_series.ipynb
 """
+
 import logging
 from pathlib import Path
 
@@ -14,7 +15,8 @@ import xarray as xr
 
 logging.basicConfig(level=logging.INFO)
 
-files = sorted(list(Path('/scratch/ccic_record/data/ccic/cpcir/monthly_means').glob('ccic_cpcir_*_monthlymean.zarr')))
+data_path = Path('/scratch/ccic_record/data/ccic/cpcir/monthly_means')
+files = sorted(list(data_path.glob('ccic_cpcir_*_monthlymean.zarr')))
 
 logging.info(f"Found {len(files)} files.")
 
@@ -47,8 +49,6 @@ ca_mean_masked = None
 valid_frac = None
 valid_frac_masked = None
 time = []
-
-files = files[:2]
 
 for path in tqdm.tqdm(files, dynamic_ncols=True):
     with xr.open_dataset(path, engine='zarr') as input_data:
@@ -141,4 +141,5 @@ results = xr.Dataset(
     }
 )
 
-results.to_netcdf('/scratch/ccic_record/data/ccic/cpcir/ccic_cpcir_1998-2023_monthlymeans.nc')
+output_path = Path('/scratch/ccic_record/data/ccic/cpcir)
+results.to_netcdf(output_path / 'ccic_cpcir_1998-2023_monthlymeans.nc')
