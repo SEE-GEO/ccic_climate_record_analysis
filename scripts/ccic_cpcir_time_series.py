@@ -141,5 +141,5 @@ results = xr.Dataset(
     }
 )
 
-output_path = Path('/scratch/ccic_record/data/ccic/cpcir)
+output_path = Path('/scratch/ccic_record/data/ccic/cpcir')
 results.to_netcdf(output_path / 'ccic_cpcir_1998-2023_monthlymeans.nc')
