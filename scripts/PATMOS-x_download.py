@@ -36,7 +36,7 @@ def apply_custom_filename(file: str | Path) -> str:
     Returns:
         The filename with the custom pattern
     """
-    return Path(file).name.replace(".nc", "_v2.nc")
+    return Path(file).name.replace(".nc", "_v2.zarr")
 
 
 def exists_remote(host: str, path: Path | str) -> bool:
@@ -106,10 +106,10 @@ def process_file(file: str, destination_dir: Path, ssh: str = None) -> None:
         if ssh is not None:
             with tempfile.TemporaryDirectory() as tmpdir:
                 dst_path = Path(tmpdir) / fname_dst
-                ds.to_netcdf(dst_path)
-                subprocess.run(["scp", dst_path, f"{ssh}:{destination_dir}"])
+                ds.to_zarr(dst_path)
+                subprocess.run(["scp", "-r", dst_path, f"{ssh}:{destination_dir}"])
         else:
-            ds.to_netcdf(destination_dir / fname_dst)
+            ds.to_zarr(destination_dir / fname_dst)
 
 
 def run(files: list, n_proc: int, process_file_partial: functools.partial) -> None:
