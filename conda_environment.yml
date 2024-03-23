@@ -22,5 +22,6 @@ dependencies:
   - s3fs
   - tqdm
   - xarray
+  - scipy
   - pip:
     - ccic
