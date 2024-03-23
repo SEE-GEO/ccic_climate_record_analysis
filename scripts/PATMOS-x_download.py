@@ -54,7 +54,7 @@ def exists_remote(host: str, path: Path | str) -> bool:
     Raises:
         Exception: if the SSH connection failed
     """
-    status = subprocess.call(["ssh", host, "test -f {}".format(shlex.quote(str(path)))])
+    status = subprocess.call(["ssh", host, "test -d {}".format(shlex.quote(str(path)))])
     if status == 0:
         return True
     if status == 1:
