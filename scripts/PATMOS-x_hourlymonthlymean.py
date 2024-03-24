@@ -44,7 +44,7 @@ def process_month(files: list[Path], show_progress: bool=True) -> xr.Dataset:
     """
 
     # Create an empty dataset to later populate
-    ds = xr.load_dataset(files[0])
+    ds = xr.load_dataset(files[0], engine='zarr')
     ds = ds.drop_vars(ds.keys())
     shape = (24, 1, ds.latitude.size, ds.longitude.size)
     ds['hour_of_day'] = (('hour_of_day',), range(24))
@@ -58,19 +58,16 @@ def process_month(files: list[Path], show_progress: bool=True) -> xr.Dataset:
 
     files_iterator = tqdm.tqdm(files, dynamic_ncols=True, leave=False) if show_progress else files
     for f in files_iterator:
-        ds_f = xr.open_dataset(f)
+        ds_f = xr.open_dataset(f, engine='zarr')
         hour_index = (ds_f.scan_line_time.data // 3600).astype(int)
         for i in range(24):
             ds['cloud_probability_sum'][i].data[hour_index == i] += ds_f['cloud_probability'].data[hour_index == i]
             ds['cloud_probability_count'][i].data[hour_index == i] += np.ones((hour_index == i).sum(), dtype=int)
             ds['cloud_fraction_sum'][i].data[hour_index == i] += ds_f['cloud_fraction'].data[hour_index == i]
             ds['cloud_fraction_count'][i].data[hour_index == i] += np.ones((hour_index == i).sum(), dtype=int)
-            # TIWP: The cloud_phase is either {0: clear, 1: water, 2: supercooled_water, 3: mixed, 4: ice, 5: unknown}
-            #       `unknown` includes NaNs
-            #       Consider TIWP 0 for all those cases where cloud_phase is not ice, and assign NaN to those `unknown`
-            tiwp = np.where(ds_f['cloud_phase'] == 4, ds_f['cld_cwp_dcomp'], 0) * np.where(ds_f['cloud_phase'] == 5, np.nan, 1)
-            ds['tiwp_sum'][i].data[hour_index == i] += np.where(np.isfinite(tiwp.data), tiwp.data, 0)[hour_index == i]
-            ds['tiwp_count'][i].data[hour_index == i] += np.where(np.isfinite(tiwp.data), 1, 0)[hour_index == i]
+            tiwp = ds_f['cld_iwp_dcomp'].data[hour_index == i]
+            ds['tiwp_sum'][i].data[hour_index == i] += np.where(np.isfinite(tiwp), tiwp, 0)
+            ds['tiwp_count'][i].data[hour_index == i] += np.where(np.isfinite(tiwp), 1, 0)
 
     ds['cloud_probability'] = (
         ds.cloud_probability_sum.dims,
@@ -136,12 +133,7 @@ if __name__ == "__main__":
     def process_month_aux(files: list[Path]) -> None:
         ds = process_month(files)
         month = get_month_from_filename(files[0])
-        ds.to_netcdf(
-            args.destination / f'PATMOS-x_v06-hourlymonthlymean_{month}.nc',
-            # apply compression to save enormous disk space at little cost,
-            # see issue #12
-            encoding={var: {'zlib': True, 'complevel': 9} for var in ds}
-        )
+        ds.to_zarr(args.destination / f'PATMOS-x_v06-hourlymonthlymean_{month}.zarr')
 
     with Pool(processes=args.processes) as pool:
         list(tqdm.tqdm(pool.imap(process_month_aux, files.values()), dynamic_ncols=True, total=len(files)))
