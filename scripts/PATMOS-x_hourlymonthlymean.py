@@ -22,7 +22,8 @@ def get_files_by_month(source: Path) -> dict:
     Returns:
         A dictionary with {YYYYMM: [file1, file2, ..]}
     """
-    files = list(source.glob('*nc'))
+    files = list(source.glob('*zarr'))
+    files = [f for f in files if '-preliminary' not in f.name]
     dictionary = dict()
     for f in files:
         month = get_month_from_filename(f)
