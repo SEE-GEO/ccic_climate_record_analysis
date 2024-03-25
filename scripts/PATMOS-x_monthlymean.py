@@ -40,7 +40,7 @@ def process_hmm_file(file_hmm: Path, variables: list[str],
     Notes:
         The number of data points in each pixel is taken into account.
     """
-    ds_hourlymonthlymean = xr.open_dataset(file_hmm)
+    ds_hourlymonthlymean = xr.open_dataset(file_hmm, engine='zarr')
     data = dict.fromkeys(variables)
     for var in variables:
         data[var] = {
@@ -89,15 +89,8 @@ def process_hmm_file(file_hmm: Path, variables: list[str],
 
     # Write to disk
     month = get_date_from_filename(file_hmm).strftime('%Y%m')
-    file_mm = destination / f"PATMOS-x_v06-monthlymean_{month}.nc"
-    ds_monthlymean.to_netcdf(
-        file_mm,
-        # using this encoding the files can be about 3x smaller
-        encoding={
-            var: {'zlib': True, 'complevel': 9}
-            for var in ds_monthlymean
-        }
-    )
+    file_mm = destination / f"PATMOS-x_v06-monthlymean_{month}.zarr"
+    ds_monthlymean.to_zarr(file_mm)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -133,7 +126,7 @@ if __name__ == "__main__":
 
     # Find files
     hmm_files = sorted(
-        list(args.source.glob('PATMOS-x_v06-hourlymonthlymean_*.nc'))
+        list(args.source.glob('PATMOS-x_v06-hourlymonthlymean_*.zarr'))
     )
 
     # To make it work with tqdm and multiprocessing.Pool
