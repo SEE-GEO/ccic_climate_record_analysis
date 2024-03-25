@@ -20,6 +20,7 @@ VARIABLES = [
     "cloud_fraction",
     "cld_cwp_dcomp",
     "scan_line_time",
+    "cld_opd_dcomp"
 ]
 
 # S3 parameters
@@ -35,7 +36,7 @@ def apply_custom_filename(file: str | Path) -> str:
     Returns:
         The filename with the custom pattern
     """
-    return Path(file).name.replace(".nc", "_v1.nc")
+    return Path(file).name.replace(".nc", "_v2.zarr")
 
 
 def exists_remote(host: str, path: Path | str) -> bool:
@@ -53,7 +54,7 @@ def exists_remote(host: str, path: Path | str) -> bool:
     Raises:
         Exception: if the SSH connection failed
     """
-    status = subprocess.call(["ssh", host, "test -f {}".format(shlex.quote(str(path)))])
+    status = subprocess.call(["ssh", host, "test -d {}".format(shlex.quote(str(path)))])
     if status == 0:
         return True
     if status == 1:
@@ -73,10 +74,22 @@ def process_file(file: str, destination_dir: Path, ssh: str = None) -> None:
     fs = fsspec.filesystem("s3", anon=True)
     with fs.open(f"s3://{file}") as handle:
         ds = xr.open_dataset(handle, engine="h5netcdf")[VARIABLES].load()
-        ds.cloud_phase.data = np.where(
-            np.isfinite(ds.cloud_phase.data), ds.cloud_phase.data, 5
-        ).astype(np.int8)
-        ds.cloud_phase.attrs["comment"] = "Set NaNs to 5"
+        # See PATMOS-x_documentation_TIWP.ipynb for understanding cld_iwp_dcomp
+        cld_iwp_dcomp = xr.where(
+            np.isfinite(ds.cld_opd_dcomp),
+            1,
+            np.nan
+        ) * xr.where(
+            ds.cloud_phase == 4, # ice phase
+            ds.cld_cwp_dcomp,
+            0
+        )
+        cld_iwp_dcomp.attrs = ds.cld_cwp_dcomp.attrs
+        cld_iwp_dcomp.attrs['long_name'] = 'ice water path from DCOMP'
+        # Clean dataset
+        ds = ds.drop_vars(['cloud_phase', 'cld_cwp_dcomp', 'cld_opd_dcomp'])
+        ds['cld_iwp_dcomp'] = cld_iwp_dcomp.astype(np.float32)
+
         scan_line_time_data = ds.scan_line_time.data
         scan_line_time_data = np.where(
             np.isfinite(scan_line_time_data),
@@ -93,10 +106,10 @@ def process_file(file: str, destination_dir: Path, ssh: str = None) -> None:
         if ssh is not None:
             with tempfile.TemporaryDirectory() as tmpdir:
                 dst_path = Path(tmpdir) / fname_dst
-                ds.to_netcdf(dst_path)
-                subprocess.run(["scp", dst_path, f"{ssh}:{destination_dir}"])
+                ds.to_zarr(dst_path)
+                subprocess.run(["scp", "-r", dst_path, f"{ssh}:{destination_dir}"])
         else:
-            ds.to_netcdf(destination_dir / fname_dst)
+            ds.to_zarr(destination_dir / fname_dst)
 
 
 def run(files: list, n_proc: int, process_file_partial: functools.partial) -> None:
