@@ -9,6 +9,7 @@ The core code is based on
 import logging
 from pathlib import Path
 
+import ccic
 import numpy as np
 import tqdm
 import xarray as xr
