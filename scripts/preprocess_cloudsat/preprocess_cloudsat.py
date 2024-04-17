@@ -7,6 +7,8 @@ import multiprocessing
 
 import data_preprocessing as dp
 
+GRIDSAT_dt = 3 # 3h timesteps for Gridsat  
+
 def get_granules(year, month, cloudsat_paths):
     granules = {}
     for product in cloudsat_paths:
@@ -16,41 +18,41 @@ def get_granules(year, month, cloudsat_paths):
             filename = file.name
             if filename.endswith('.hdf'):
                 tstamp = filename.split('_')[0]
-                id = filename.split('_')[1]
+                id_ = filename.split('_')[1]
             elif filename[0:6] == 'DARDAR':
                 tstamp = filename.split('_')[1]
-                id = filename.split('_')[2]
+                id_ = filename.split('_')[2]
             else:
-                id = 0
+                id_ = 0
                 tstamp = 0
                 print('No match for ', filename)
 
-            if id not in granules.keys():
-                granules[id] = {'files' : [file], 'tstamp' : tstamp}
+            if id_ not in granules.keys():
+                granules[id_] = {'files' : [file], 'tstamp' : tstamp}
             else:
-                granules[id]['files'].append(file)
+                granules[id_]['files'].append(file)
     return granules
 
-def process_granule(id, granules, paths):
+def process_granule(id_, granules, paths):
     # no local path needed
     # get basename from the full path
     output_dir = paths['output_dir']
     ccic_datadir = paths['ccic_datadir']
     
-    if len(granules[id]['files']) == 3:    
+    if len(granules[id_]['files']) == 3:    
         
-        tstamp = granules[id]['tstamp']
+        tstamp = granules[id_]['tstamp']
         # Load CloudSat data
         allfiles_ok = 0
-        for f in granules[id]['files']:
+        for f in granules[id_]['files']:
             filename = f.name 
             if filename.startswith('DARDAR'):
                 dardar = dp.load_dardar(f)
                 allfiles_ok += 1
-            elif filename.startswith(f'{tstamp}_{id}_CS_2C-ICE'):
+            elif filename.startswith(f'{tstamp}_{id_}_CS_2C-ICE'):
                 ice2c = dp.load_2cice(f)
                 allfiles_ok += 1
-            elif filename.startswith(f'{tstamp}_{id}_CS_2B-CLDCLASS'):
+            elif filename.startswith(f'{tstamp}_{id_}_CS_2B-CLDCLASS'):
                 cldclass = dp.load_cldclass(f)
                 allfiles_ok += 1
             else:
@@ -63,8 +65,7 @@ def process_granule(id, granules, paths):
             # get first and last times for CloudSat granule as a datetime object
             start, stop = dp.get_time_range(dardar['time'])
             # Generate local ccic time grid
-            dt = 3 # 3h timesteps for Gridsat
-            ccic_t_grid = dp.get_local_time_grid(start, stop, dt)
+            ccic_t_grid = dp.get_local_time_grid(start, stop, GRIDSAT_dt)
             
             # Load CCIC data 
             try:
@@ -110,26 +111,26 @@ def process_granule(id, granules, paths):
                     time=(['rays'], times),
                 ),
                 attrs=dict(
-                    cloudsat_granule=id,
+                    cloudsat_granule=id_,
                     cloudsat_timestamp=tstamp,
                 ),
             )
             # Name of output file
-            outfile = f'ccicgridsat_dardar_2cice_{tstamp}_{id}.nc'
+            outfile = f'ccicgridsat_dardar_2cice_{tstamp}_{id_}.nc'
             outpath = os.path.join(output_dir, outfile)
             ds.to_netcdf(outpath)
-            message = f'Processesing done for granule {id}'
+            message = f'Processesing done for granule {id_}'
         else:
-            message = f'Maybe wierd filepaths for granule {id}'
+            message = f'Maybe wierd filepaths for granule {id_}'
     else:
-        message = f'Incomplete data for granule {id}'
+        message = f'Incomplete data for granule {id_}'
     return message
 
 def run(args):
-    id = args['id']
+    id_ = args['id_']
     granules = args['granules']
     paths = args['paths']
-    return process_granule(id, granules, paths)
+    return process_granule(id_, granules, paths)
 
 
 if __name__ == "__main__":
@@ -164,7 +165,7 @@ if __name__ == "__main__":
             # Get dict with existing granules
             granules = get_granules(yr, month, cloudsat_paths)
             
-            arguments = [{'id' : id, 'granules' : granules, 'paths' : paths} for id in granules]
+            arguments = [{'id_' : id_, 'granules' : granules, 'paths' : paths} for id_ in granules]
             
             # the number of CPU cores to use
             nprocesses = 8 #multiprocessing.cpu_count() 

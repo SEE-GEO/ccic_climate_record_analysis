@@ -6,6 +6,8 @@ from datetime import timedelta, datetime
 from scipy.interpolate import interpn
 import ccic
 
+LATLIM = (-70, 69)  #  latitude limits for Gridsat
+
 def get_time_range(times):
     """
     get first and last times for CloudSat granule as datetime objects on the form yyyy-mm-dd hh:mm:ss
@@ -44,7 +46,7 @@ def get_local_time_grid(tmin, tmax, dt):
     dt = timedelta(hours=dt)
     return np.arange(t0, t1+dt, dt).tolist()
 
-def load_dardar(filepath : Path):
+def load_dardar(filepath : Path, latlim=LATLIM):
 
     # 'time' and 'height' are dimensions
     variables = [
@@ -54,8 +56,6 @@ def load_dardar(filepath : Path):
         'instrument_flag',
         'DARMASK_Simplified_Categorization',
     ]
-
-    latlim = (-70, 69)  #  latitude limits for Gridsat
 
     with xr.open_dataset(filepath) as ds:
         # keep selected variables
@@ -69,7 +69,7 @@ def load_dardar(filepath : Path):
         ds = ds.reindex(height=ds.height[::-1]) 
         return ds
     
-def load_2cice(filepath : Path):
+def load_2cice(filepath : Path, latlim=LATLIM):
 
     # 'rays' and 'bins' are dimensions
     variables = [
@@ -80,8 +80,6 @@ def load_2cice(filepath : Path):
         'iwp',
         'time_since_start',
     ]
-
-    latlim = (-70, 69)  #  latitude limits for Gridsat
 
     ds = l2c_ice.open(filepath)
     ds = ds.reset_coords()
@@ -97,7 +95,7 @@ def load_2cice(filepath : Path):
 
     return ds
 
-def load_cldclass(filepath : Path):
+def load_cldclass(filepath : Path, latlim=LATLIM):
 
     # 'rays' and 'bins' are dimensions
     variables = [
@@ -107,8 +105,6 @@ def load_cldclass(filepath : Path):
         'cloud_class',
         'cloud_class_flag',
     ]
-
-    latlim = (-70, 69)  #  latitude limits for Gridsat
 
     ds = l2b_cldclass.open(filepath)
     ds = ds.reset_coords()
@@ -154,31 +150,6 @@ def load_ccic_grid(local_time_grid, ccic_datadir):
         dsets.append(load_ccic(filepath))
     return xr.concat(dsets, dim='time')
 
-def load_era5(filepath : Path):
-
-    variables = [
-        'tiwp',
-        'tcc',
-    ]
-    with xr.open_dataset(filepath) as ds:
-        # add column snow and column ice to get total ice water path
-        ds['tiwp'] = ds.tcsw + ds.tciw
-        ds = ds[variables]
-        return ds
-
-def load_era5_grid(local_time_grid, datadir):
-    """
-    """
-    dsets = []
-    for t in local_time_grid:
-        timestamp = t.strftime("%Y%m%d%H")
-        file_to_load = f'reanalysis-era5-single-levels_{timestamp}_total_column_snow_water-total_cloud_cover-total_column_cloud_ice_water-90-90--180-180.nc'
-        filepath = Path(datadir, file_to_load)
-        # Load data
-        dsets.append(load_era5(filepath))
-    return xr.concat(dsets, dim='time')
-
-
 def process_dardar(ds):
 
     # calculate iwp (iwc is in kg/m^3, height is in m, dz = 60 m)
@@ -187,6 +158,7 @@ def process_dardar(ds):
     # get cloud mask 
     cm = ds.DARMASK_Simplified_Categorization.values
     # remap cloud classes to 4 cloud mask flags
+    # -9: missing/invalid values, -1: bins below surface, 0: no cloud, 1: cloudy, 
     cm[np.isin(cm, [-2, 2, 3, 4, 5, 9, 10, 11, 12, 13, 14, 15])] = 1
     cm[np.isin(cm, [6, 7, 8])] = 0
     # count cloud mask categories
@@ -266,7 +238,7 @@ def interpolate_data(data, times, lats, lons, variables=['tiwp']):
     lons:  Cloutsat coortinates (float)
     """
     
-    gridsat_coords = np.stack(
+    cloudsat_coords = np.stack(
         [times.astype(float), lats, lons],
         axis=1
     )
@@ -280,7 +252,7 @@ def interpolate_data(data, times, lats, lons, variables=['tiwp']):
         interpolated = interpn(
             data_grid,
             data[variable].values,
-            gridsat_coords,
+            cloudsat_coords,
             method='nearest',
             bounds_error=False,
             fill_value=np.nan,

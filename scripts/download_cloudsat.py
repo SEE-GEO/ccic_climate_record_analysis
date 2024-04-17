@@ -1,41 +1,7 @@
-from ftplib import FTP
 from  pysftp import Connection, SSHException
 import os
 from datetime import datetime, timedelta
 from getpass import getpass
-
-def download_files_ftp(host, user, remote_paths, local_path, pw):
-    """
-    remote_paths: list of remote directories
-    """
-    # Connect to the FTP server
-    with FTP(host) as ftp:
-        # Login to the FTP server
-        ftp.login(user, pw)
-        
-        ok_paths = []
-        for i,remote_path in enumerate(remote_paths):
-            try:
-                # Change to the remote directory
-                ftp.cwd(remote_path)
-                # List files in the remote directory
-                file_list = sorted(ftp.nlst())
-                ok_paths.append(i)
-            except:
-                file_list = []
-            #assert len(file_list) > 0, f'No files found at remote path {remote_path}'
-            for file_name in file_list:
-
-                remote_file_path = os.path.join(remote_path, file_name)
-                local_file_path = os.path.join(local_path, file_name)
-
-                # Download file
-                with open(local_file_path, 'wb') as local_file:
-                    ftp.retrbinary(f'RETR {remote_file_path}', local_file.write)
-
-                #print(f'Downloaded: {file_name}')
-            print(f"Downloaded files for path {i+1}/{len(remote_paths)}: {remote_path}")
-    return ok_paths
 
 def download_files_sftp(host, user, remote_paths, local_path, key=None, pw=None):
     """
