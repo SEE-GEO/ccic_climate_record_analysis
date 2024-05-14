@@ -31,11 +31,9 @@ def calculate_global_mean(data, dataset):
     return global_mean
 
 
-def calculate_monthly_means(dataset, variable, mask):
+def calculate_monthly_means(dataset, variable):
     """
     Calculate monthly global means from a yearly dataset.
-    If mask is True, then interpolate and mask the data (though this is
-    not needed is using the '_masked' datasets.
     """
 
     processed_results = {}
@@ -93,14 +91,10 @@ def process_monthly_means(directory_path, mask):
 
             year = datetime.datetime.fromtimestamp(dates_unix[-1]).year
 
-            cf_monthly_mean = calculate_monthly_means(dataset, "CF", mask=mask)
-            tiwp_monthly_mean = calculate_monthly_means(dataset, "TIWP", mask=mask)
-            cf_monthly_mean_masked = calculate_monthly_means(
-                dataset_masked, "CF", mask=mask
-            )
-            tiwp_monthly_mean_masked = calculate_monthly_means(
-                dataset_masked, "TIWP", mask=mask
-            )
+            cf_monthly_mean = calculate_monthly_means(dataset, "CF")
+            tiwp_monthly_mean = calculate_monthly_means(dataset, "TIWP")
+            cf_monthly_mean_masked = calculate_monthly_means(dataset_masked, "CF")
+            tiwp_monthly_mean_masked = calculate_monthly_means(dataset_masked, "TIWP")
 
             for month in cf_monthly_mean.keys():
                 date = pd.to_datetime(f"{year}-{int(month):02d}-01")
@@ -359,7 +353,8 @@ def process_zonal_means(directory_path, mask):
 
 def interpolate_mask(mask_ds, original_ds):
     """
-    Interpolate the mask dataset onto modis dataset coordinates
+    Interpolate the mask dataset onto modis dataset coordinates.
+    Used one-time to create the mask 'mask_24_for_modis.nc'.
     """
     interpolated_mask = mask_ds.astype(int).interp(
         lat=original_ds.lat, lon=original_ds.lon, method="nearest"
@@ -367,16 +362,7 @@ def interpolate_mask(mask_ds, original_ds):
     return interpolated_mask
 
 
-def apply_mask_to_dataset(original_ds, mask):
-    mask = mask.mask == 1
-    for var in original_ds.data_vars:
-        original_ds[var] = original_ds[var].where(mask == True)
-
-    return original_ds
-
-
 if __name__ == "__main__":
-
     modis_data_dir = "/scratch/ccic_record/data/modis/"
     mask = xr.open_dataset("../mask_24_for_modis.nc")
 
