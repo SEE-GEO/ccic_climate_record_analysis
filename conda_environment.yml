@@ -3,6 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
+  - beautifulsoup4
   - black
   - ca-certificates
   - cartopy
@@ -11,16 +12,21 @@ dependencies:
   - cdsapi
   - dask
   - fsspec
+  - geopandas
   - h5netcdf
   - ipywidgets
   - jupyterlab
   - matplotlib
+  - shapely
+  - ipyleaflet
   - netCDF4
   - openssl
   - pip
   - python=3.10
   - s3fs
   - tqdm
+  - tomlkit
   - xarray
   - pip:
     - ccic
+    - git+https://github.com/see-geo/pansat@37a11aebc04341cc282f9df063566235b519713a
