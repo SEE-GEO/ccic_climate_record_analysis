@@ -62,7 +62,7 @@ def extract_collocations(
             # Retrieve file from local machine or remote
             cs_data = ref_product.open(cs_rec)
 
-            tr = cs_rec.temporal_coverage
+            tr = cs_rec.temporal_coverage.expand(np.timedelta64(3, "h"))
             lock = FileLock("isccp.lock")
             with lock:
                 isccp_recs = isccp_hgg.find_files(tr)
