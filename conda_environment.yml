@@ -3,9 +3,9 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
   - appdirs
   - beautifulsoup4
+  - black
   - boto3
   - cryptography
   - cdsapi
@@ -31,13 +31,13 @@ dependencies:
   - requests
   - shapely
   - pip
+  - python=3.10
+  - s3fs
+  - tqdm
+  - xarray
   - pip:
     - ccic
     - git+https://github.com/see-geo/pansat@8b634fbae3adcb33c8e665f769270112cae6fe4f
     - jupyterlab-code-formatter
     - isort
     - black
-
-    
-
-
