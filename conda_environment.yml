@@ -37,7 +37,7 @@ dependencies:
   - xarray
   - pip:
     - ccic
-    - git+https://github.com/see-geo/pansat@8b634fbae3adcb33c8e665f769270112cae6fe4f
+    - git+https://github.com/see-geo/pansat@de4f11c3b39c31b7f50b659d189a1c7d1502276e
     - jupyterlab-code-formatter
     - isort
     - black
