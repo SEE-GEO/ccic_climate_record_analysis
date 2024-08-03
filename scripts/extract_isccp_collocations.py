@@ -111,7 +111,7 @@ n_processes = 16
 pool = ProcessPoolExecutor(max_workers=n_processes)
 #pool = ThreadPoolExecutor(max_workers=n_processes)
 
-year_start = 2007
+year_start = 2009
 year_end = 2020
 
 for year in range(year_start, year_end):
