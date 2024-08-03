@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import List
 
+from filelock import FileLock
 import xarray as xr
 
 from pansat import Product, TimeRange
@@ -42,11 +43,19 @@ def extract_collocations(
     start = datetime(date.year, date.month, date.day)
     end = start + timedelta(hours=23, minutes=59, seconds=59)
 
-    cs_recs = ref_product.find_files(
-            TimeRange(start, end),
-            provider=cloudsat_dpc_provider
-    )
+    lock = FileLock("icare.lock")
+    with lock:
+        cs_recs = ref_product.find_files(TimeRange(start, end))
+        for cs_rec in cs_recs:
+            cs_rec_local = cs_rec.get()
+            try:
+                ref_product.open(cs_rec_local)
+            except Exception:
+                LOGGER.info("Re-downloading %s.", cs_rec.filename)
+                cs_rec = cs_rec.download()
+
     failed = []
+
 
     for cs_rec in cs_recs:
         try:
@@ -91,25 +100,25 @@ output_path = Path("/data/ccic/collocations/ccic")
 output_path.mkdir(exist_ok=True)
 
 failed = []
-year = 2010
 
-n_processes = 2
+n_processes = 6
 pool = ProcessPoolExecutor(max_workers=n_processes)
 
-tasks = []
-for month in range(3, 12):
-    _, n_days = monthrange(year, month + 1)
-    for day in range(n_days):
-        date = datetime(year, month + 1, day + 1)
-        tasks.append(pool.submit(
-            extract_collocations,
-            date,
-            output_path,
-            l2b_cldclass_lidar
-        ))
+for year in range(2006, 2021):
+    tasks = []
+    for month in range(12):
+        _, n_days = monthrange(year, month + 1)
+        for day in range(n_days):
+            date = datetime(year, month + 1, day + 1)
+            tasks.append(pool.submit(
+                extract_collocations,
+                date,
+                output_path,
+                l2b_cldclass_lidar
+            ))
 
-    for task in tasks:
-        failed += [str(path) for path in task.result()]
+        for task in tasks:
+            failed += [str(path) for path in task.result()]
 
-with open(f"ccic_failed_{year}.txt", "w") as output:
-    output.write("\n".join(failed))
+    with open(f"ccic_failed_{year}.txt", "w") as output:
+        output.write("\n".join(failed))
