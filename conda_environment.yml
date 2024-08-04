@@ -3,20 +3,33 @@ channels:
   - conda-forge
   - defaults
 dependencies:
+  - appdirs
+  - beautifulsoup4
   - black
-  - ca-certificates
-  - cartopy
-  - certifi
-  - cmocean
+  - boto3
+  - cryptography
   - cdsapi
-  - dask
-  - fsspec
-  - h5netcdf
-  - ipywidgets
-  - jupyterlab
+  - geopandas
   - matplotlib
-  - netCDF4
+  - lxml
+  - cartopy
+  - xarray
+  - cmocean
+  - ca-certificates
   - openssl
+  - netcdf4
+  - hdf4
+  - hdf5
+  - pyhdf
+  - h5py
+  - jupyterlab
+  - certifi
+  - ipyleaflet
+  - numpy
+  - paramiko
+  - pyproj
+  - requests
+  - shapely
   - pip
   - python=3.10
   - s3fs
@@ -24,3 +37,7 @@ dependencies:
   - xarray
   - pip:
     - ccic
+    - git+https://github.com/see-geo/pansat@de4f11c3b39c31b7f50b659d189a1c7d1502276e
+    - jupyterlab-code-formatter
+    - isort
+    - black
