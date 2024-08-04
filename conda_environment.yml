@@ -35,6 +35,7 @@ dependencies:
   - s3fs
   - tqdm
   - xarray
+  - scipy
   - pip:
     - ccic
     - git+https://github.com/see-geo/pansat@de4f11c3b39c31b7f50b659d189a1c7d1502276e
