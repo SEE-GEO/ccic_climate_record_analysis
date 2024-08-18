@@ -124,7 +124,7 @@ def extract_collocations(
                 else:
                     new_age = (cloud_vars["scan_line_time"].data - cs_data.time.data)
                     age = (cloud_vars_cmb["scan_line_time"].data - cs_data.time.data)
-                    age_mask = mask * (np.abs(new_age) < np.abs(age))
+                    age_mask = mask * ((np.abs(new_age) < np.abs(age)) + np.isnan(age))
                     for var in vars + ["cs_time"]:
                         cloud_vars_cmb[var].data[age_mask] = cloud_vars[var].data[age_mask]
 
@@ -161,7 +161,7 @@ logging.basicConfig(level="WARNING", force=True)
 output_path = Path("/scratch/ccic_record/collocations/patmosx_new")
 output_path.mkdir(exist_ok=True)
 
-n_processes = 16
+n_processes = 32
 pool = ProcessPoolExecutor(max_workers=n_processes)
 #pool = ThreadPoolExecutor(max_workers=n_processes)
 

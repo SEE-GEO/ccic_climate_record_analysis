@@ -13,7 +13,6 @@ from pansat import Product, TimeRange
 from pansat.time import to_datetime
 from pansat.products.satellite.cloudsat import l2b_cldclass_lidar
 from pansat.products.satellite.ccic import ccic_cpcir
-from pansat.download.providers.cloudsat_dpc import cloudsat_dpc_provider
 
 
 LOGGER = logging.getLogger(__name__)
@@ -96,15 +95,15 @@ def extract_collocations(
 
     return failed
 
-output_path = Path("/data/ccic/collocations/ccic")
+output_path = Path("/scratch/ccic_record/collocations/cpcir")
 output_path.mkdir(exist_ok=True)
 
 failed = []
 
-n_processes = 6
+n_processes = 32
 pool = ProcessPoolExecutor(max_workers=n_processes)
 
-for year in range(2006, 2021):
+for year in range(2012, 2021):
     tasks = []
     for month in range(12):
         _, n_days = monthrange(year, month + 1)
