@@ -11,8 +11,7 @@ TCSW_FILE = "{year}{month:02}/e5.oper.an.sfc.228_090_tcsw.ll025sc.{year}{month:0
 
 
 def extract_collocations(
-    date: datetime, cloudsat_track_path: Path, era5_data_path: Path, output_path: Path
-) -> List[Path]:
+    date: datetime, cloudsat_track_path: Path, era5_data_path: Path, output_path: Path) -> List[Path]:
 
     era5_data_path = Path(era5_data_path)
     cloudsat_track_path = Path(cloudsat_track_path)
@@ -53,13 +52,17 @@ def extract_collocations(
     )
 
     era5_tiwp = era5_tcsw.TCSW + era5_tciw.TCIW
-    lons = era5_tiwp.data
+    lons = era5_tiwp.longitude.data
     lons[lons > 180] -= 360
     era5_tiwp = era5_tiwp.sortby("longitude")
 
     failed = []
 
-    cloudsat_files = cloudsat_track_path.glob(f"{date.year}{date.month:02}*.nc")
+    cloudsat_files = []
+    for day in range(n_days):
+        jday = (date + timedelta(days=day)).timetuple().tm_yday
+        cloudsat_files += cloudsat_track_path.glob(f"{date.year}{jday:03}*.nc")
+
     for cs_file in cloudsat_files:
         try:
             cs_data = xr.load_dataset(cs_file)
@@ -87,7 +90,7 @@ era5_path = "/home/kukulies/glade/campaign/collections/rda/data/ds633.0/e5.oper.
 cloudsat_track_path = "/data/ccic/cloudsat_tracks"
 
 n_processes = 1
- pool = ProcessPoolExecutor(max_workers=n_processes)
+pool = ProcessPoolExecutor(max_workers=n_processes)
 
 year_start = 2010
 year_end = 2010

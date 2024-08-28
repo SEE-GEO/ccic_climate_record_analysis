@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List
 
 from filelock import FileLock
+import numpy as np
 import xarray as xr
 
 from pansat import Product, TimeRange
@@ -63,7 +64,7 @@ def extract_collocations(
             cs_data = ref_product.open(cs_rec)
 
             # Find CPCIR file in time range.
-            tr = cs_rec.temporal_coverage
+            tr = cs_rec.temporal_coverage.expand(np.timedelta64(30, "m"))
             ccic_recs = ccic_cpcir.find_files(tr)
 
             ccic_data = []
