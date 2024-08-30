@@ -17,7 +17,7 @@ def extract_collocations(
     cloudsat_track_path = Path(cloudsat_track_path)
 
     _, n_days = monthrange(date.year, date.month)
-    before = date - timedelta(days=n_days)
+    before = date - timedelta(days=1)
     _, n_days_before = monthrange(before.year, before.month)
     after = date + timedelta(days=n_days)
     _, n_days_after = monthrange(after.year, after.month)
