@@ -93,7 +93,11 @@ def extract_collocations(
                 if np.issubdtype(cloud_vars[var].data.dtype, np.floating):
                     cloud_vars[var].data[~mask] = np.nan
                 else:
-                    cloud_vars[var].data[~mask] = np.datetime64("NaT")
+                    new_age = (cloud_vars["scan_line_time"].data - cs_data.time.data)
+                    age = (cloud_vars_cmb["scan_line_time"].data - cs_data.time.data)
+                    age_mask = mask * ((np.abs(new_age) < np.abs(age)) + np.isnan(age))
+                    for var in vars + ["cs_time"]:
+                        cloud_vars_cmb[var].data[age_mask] = cloud_vars[var].data[age_mask]
 
             if cloud_vars_cmb is None:
                 cloud_vars_cmb = cloud_vars
@@ -117,8 +121,32 @@ logging.basicConfig(level="INFO", force=True)
 output_path = Path("/edata1/simon/ccic/patmosx")
 output_path.mkdir(exist_ok=True)
 
-for month in range(0, 12):
-    _, n_days = monthrange(2015, month + 1)
-    for day in range(n_days):
-        date = datetime(2015, month + 1, day + 1)
-        extract_collocations(date, output_path, l2b_cldclass_lidar)
+n_processes = 32
+pool = ProcessPoolExecutor(max_workers=n_processes)
+#pool = ThreadPoolExecutor(max_workers=n_processes)
+
+year_start = 2009
+year_end = 2020
+
+for year in range(year_start, year_end + 1):
+
+    tasks = []
+    failed = []
+
+    for month in range(12):
+        _, n_days = monthrange(year, month + 1)
+        for day in range(n_days):
+            date = datetime(year, month + 1, day + 1)
+            tasks.append(
+                pool.submit(
+                    extract_collocations,
+                    date,
+                    output_path,
+                    l2b_cldclass_lidar
+                )
+            )
+        for task in tasks:
+            failed += [str(path) for path in task.result()]
+
+    with open(f"patmos_failed_{year}.txt", "w") as output:
+        output.write("\n".join(failed))

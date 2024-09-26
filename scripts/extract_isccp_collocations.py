@@ -4,7 +4,9 @@ from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timedelta
 import logging
 from pathlib import Path
+import sys
 
+from filelock import FileLock
 import numpy as np
 import xarray as xr
 
@@ -62,8 +64,9 @@ def extract_collocations(
             lock = FileLock("isccp.lock")
             with lock:
                 isccp_recs = isccp_hgg.find_files(tr)
+                isccp_paths = set([rec.get().local_path for rec in isccp_recs])
                 isccp_data = xr.concat(
-                    [xr.load_dataset(rec.get().local_path) for rec in isccp_recs],
+                    [xr.load_dataset(path) for path in isccp_paths],
                     "time"
                 )
             isccp_data = isccp_data[[
@@ -102,11 +105,11 @@ logging.basicConfig(level="WARNING", force=True)
 output_path = Path("/data/ccic/collocations/isccp")
 output_path.mkdir(exist_ok=True, parents=True)
 
-n_processes = 8
+n_processes = 4
 pool = ProcessPoolExecutor(max_workers=n_processes)
 
-year_start = 2006
-year_end = 2020
+year_start = int(sys.argv[1])
+year_end = year_start + 1
 
 for year in range(year_start, year_end):
 
