@@ -58,14 +58,14 @@ def extract_collocations(
             # Retrieve file from local machine or remote
             cs_data = ref_product.open(cs_rec)
 
-            # Find PATMOS-x file in time range.
-            tr = cs_rec.temporal_coverage
-            isccp_recs = isccp_hgg.find_files(tr)
-            print(tr, len(isccp_recs))
-            isccp_data = xr.concat(
-                [xr.load_dataset(rec.get().local_path) for rec in isccp_recs],
-                "time"
-            )
+            tr = cs_rec.temporal_coverage.expand(np.timedelta64(3, "h"))
+            lock = FileLock("isccp.lock")
+            with lock:
+                isccp_recs = isccp_hgg.find_files(tr)
+                isccp_data = xr.concat(
+                    [xr.load_dataset(rec.get().local_path) for rec in isccp_recs],
+                    "time"
+                )
             isccp_data = isccp_data[[
                 "cldamt_types",
                 "wp_type",
