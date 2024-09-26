@@ -9,13 +9,21 @@ dependencies:
   - boto3
   - cryptography
   - cdsapi
-  - geopandas
   - matplotlib
-  - lxml
   - cartopy
   - xarray
-  - cmocean
   - ca-certificates
+  - dask
+  - fsspec
+  - geopandas
+  - lxml
+  - h5netcdf
+  - ipywidgets
+  - jupyterlab
+  - shapely
+  - cmocean
+  - ipyleaflet
+  - netCDF4
   - openssl
   - netcdf4
   - hdf4
@@ -34,11 +42,12 @@ dependencies:
   - python=3.10
   - s3fs
   - tqdm
+  - tomlkit
   - xarray
   - scipy
   - pip:
     - ccic
-    - git+https://github.com/see-geo/pansat@de4f11c3b39c31b7f50b659d189a1c7d1502276e
+    - git+https://github.com/see-geo/pansat@4b940ff438064f9a5ad939d9aafe9528a08475e3
     - jupyterlab-code-formatter
     - isort
     - black
