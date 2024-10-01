@@ -35,6 +35,7 @@ def get_granules(
     granules = {}
     for product in cloudsat_paths:
         files = glob.glob(f"{cloudsat_paths[product]}/{year}/{month:02}/*/*")
+        print(product, len(files))
         for f in files:
             file = Path(f)
             filename = file.name
@@ -83,14 +84,23 @@ def process_granule(
         for f in granules[id_]["files"]:
             filename = f.name
             if filename.startswith("DARDAR"):
-                dardar = dp.load_dardar(f)
-                allfiles_ok += 1
+                try:
+                    dardar = dp.load_dardar(f)
+                    allfiles_ok += 1
+                except Exception:
+                    return f"Error loading DARDAR file {f}."
             elif filename.startswith(f"{tstamp}_{id_}_CS_2C-ICE"):
-                ice2c = dp.load_2cice(f)
-                allfiles_ok += 1
+                try:
+                    ice2c = dp.load_2cice(f)
+                    allfiles_ok += 1
+                except Exception:
+                    return f"Error loading 2C-CIE file {f}."
             elif filename.startswith(f"{tstamp}_{id_}_CS_2B-CLDCLASS"):
-                cldclass = dp.load_cldclass(f)
-                allfiles_ok += 1
+                try:
+                    cldclass = dp.load_cldclass(f)
+                    allfiles_ok += 1
+                except Exception:
+                    return f"Error loading 2B-CLDCLASS file {f}."
             else:
                 print(f"File not recognized: {filename}")
         if allfiles_ok == 3:
@@ -207,7 +217,7 @@ if __name__ == "__main__":
         "cldclass": datadir_cldclass,
     }
 
-    years = [2006]
+    years = np.arange(2012, 2020)
     for yr in years:
 
         for month in range(1, 12):
@@ -219,8 +229,7 @@ if __name__ == "__main__":
             ]
 
             # the number of CPU cores to use
-            nprocesses = 8  # multiprocessing.cpu_count()
-            nprocesses = 1
+            nprocesses = 32  # multiprocessing.cpu_count()
             count = 1
             with multiprocessing.Pool(processes=nprocesses) as pool:
                 for id_message in pool.imap(run, arguments):
