@@ -76,6 +76,8 @@ def extract_collocations(
 
             cloud_vars_cmb = None
 
+            patmosx_files = []
+
             for p_rec in patmosx_recs:
                 p_rec = p_rec.get()
                 with xr.open_dataset(p_rec.local_path, engine="zarr") as data_p:
@@ -127,6 +129,8 @@ def extract_collocations(
                     age_mask = mask * ((np.abs(new_age) < np.abs(age)) + np.isnan(age))
                     for var in vars + ["cs_time"]:
                         cloud_vars_cmb[var].data[age_mask] = cloud_vars[var].data[age_mask]
+                    if age_mask.any():
+                        patmosx_files.append(p_rec.filename)
 
             if cloud_vars_cmb is None:
                 LOGGER.info(
@@ -145,6 +149,7 @@ def extract_collocations(
                 "Writing collocations to '%s'.",
                 output_filename
             )
+            cloud_vars_cmb.attrs["input_files"] = patmosx_files
             cloud_vars_cmb.to_netcdf(output_path / output_filename)
 
         except Exception:
@@ -158,12 +163,11 @@ def extract_collocations(
 
 
 logging.basicConfig(level="WARNING", force=True)
-output_path = Path("/scratch/ccic_record/collocations/patmosx_new")
+output_path = Path("/scratch/ccic_record/collocations/patmosx")
 output_path.mkdir(exist_ok=True)
 
 n_processes = 32
 pool = ProcessPoolExecutor(max_workers=n_processes)
-#pool = ThreadPoolExecutor(max_workers=n_processes)
 
 year_start = 2009
 year_end = 2020
